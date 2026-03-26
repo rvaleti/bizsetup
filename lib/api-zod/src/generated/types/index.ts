@@ -15,6 +15,7 @@ export * from "./company";
 export * from "./companyListResponse";
 export * from "./companyWithPipeline";
 export * from "./createCompanyRequest";
+export * from "./createPipelineRequest";
 export * from "./entityType";
 export * from "./errorResponse";
 export * from "./eventListResponse";

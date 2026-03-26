@@ -3,3 +3,4 @@ export * from "./companies";
 export * from "./pipelines";
 export * from "./events";
 export * from "./notifications";
+export * from "./relations";

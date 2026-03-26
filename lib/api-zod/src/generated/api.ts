@@ -290,6 +290,14 @@ export const GetCompanyResponse = zod
   );
 
 /**
+ * Creates a new pipeline for the given company and initialises the default steps.
+ * @summary Create a pipeline for a company
+ */
+export const CreatePipelineBody = zod.object({
+  companyId: zod.string(),
+});
+
+/**
  * @summary Get pipeline details with steps
  */
 export const GetPipelineParams = zod.object({

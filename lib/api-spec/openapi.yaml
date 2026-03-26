@@ -214,6 +214,32 @@ paths:
           $ref: "#/components/responses/NotFound"
 
   # ── Pipelines ─────────────────────────────────────────────────────────────
+  /pipelines:
+    post:
+      operationId: createPipeline
+      tags: [pipelines]
+      summary: Create a pipeline for a company
+      description: Creates a new pipeline for the given company and initialises the default steps.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePipelineRequest"
+      responses:
+        "201":
+          description: Pipeline created with default steps
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
   /pipelines/{pipelineId}:
     get:
       operationId: getPipeline
@@ -991,6 +1017,14 @@ components:
           minLength: 1
       required:
         - message
+
+    CreatePipelineRequest:
+      type: object
+      properties:
+        companyId:
+          type: string
+      required:
+        - companyId
 
     UpdateUserRoleRequest:
       type: object

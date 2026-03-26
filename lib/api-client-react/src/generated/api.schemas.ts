@@ -233,6 +233,10 @@ export interface PostCommentRequest {
   message: string;
 }
 
+export interface CreatePipelineRequest {
+  companyId: string;
+}
+
 export interface UpdateUserRoleRequest {
   role: UserRole;
 }

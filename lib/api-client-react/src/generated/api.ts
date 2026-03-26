@@ -22,6 +22,7 @@ import type {
   CompanyListResponse,
   CompanyWithPipeline,
   CreateCompanyRequest,
+  CreatePipelineRequest,
   EventListResponse,
   ForbiddenResponse,
   HealthStatus,
@@ -738,6 +739,99 @@ export function useGetCompany<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Creates a new pipeline for the given company and initialises the default steps.
+ * @summary Create a pipeline for a company
+ */
+export const getCreatePipelineUrl = () => {
+  return `/api/pipelines`;
+};
+
+export const createPipeline = async (
+  createPipelineRequest: CreatePipelineRequest,
+  options?: RequestInit,
+): Promise<PipelineDetail> => {
+  return customFetch<PipelineDetail>(getCreatePipelineUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createPipelineRequest),
+  });
+};
+
+export const getCreatePipelineMutationOptions = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | ValidationErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPipeline>>,
+    TError,
+    { data: BodyType<CreatePipelineRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createPipeline>>,
+  TError,
+  { data: BodyType<CreatePipelineRequest> },
+  TContext
+> => {
+  const mutationKey = ["createPipeline"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createPipeline>>,
+    { data: BodyType<CreatePipelineRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createPipeline(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreatePipelineMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createPipeline>>
+>;
+export type CreatePipelineMutationBody = BodyType<CreatePipelineRequest>;
+export type CreatePipelineMutationError = ErrorType<
+  UnauthorizedResponse | ForbiddenResponse | ValidationErrorResponse
+>;
+
+/**
+ * @summary Create a pipeline for a company
+ */
+export const useCreatePipeline = <
+  TError = ErrorType<
+    UnauthorizedResponse | ForbiddenResponse | ValidationErrorResponse
+  >,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createPipeline>>,
+    TError,
+    { data: BodyType<CreatePipelineRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createPipeline>>,
+  TError,
+  { data: BodyType<CreatePipelineRequest> },
+  TContext
+> => {
+  return useMutation(getCreatePipelineMutationOptions(options));
+};
 
 /**
  * @summary Get pipeline details with steps

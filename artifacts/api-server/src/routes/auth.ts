@@ -6,10 +6,16 @@ const router: IRouter = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "/";
 
-router.get(
-  "/auth/google",
-  passport.authenticate("google", { scope: ["profile", "email"] })
-);
+router.get("/auth/google", (req, res, next) => {
+  const state = Buffer.from(Math.random().toString(36)).toString("base64");
+  req.session.oauthState = state;
+  req.session.save(() => {
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+      state,
+    })(req, res, next);
+  });
+});
 
 router.get(
   "/auth/google/callback",
@@ -24,7 +30,12 @@ router.get(
     }
     const user = req.user as { id: string };
     req.session.userId = user.id;
-    req.session.save(() => {
+    req.session.save((err) => {
+      if (err) {
+        req.log.error({ err }, "Failed to save session after OAuth callback");
+        res.redirect(`${FRONTEND_URL}?auth_error=1`);
+        return;
+      }
       res.redirect(FRONTEND_URL);
     });
   }

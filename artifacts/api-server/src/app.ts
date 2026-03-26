@@ -5,7 +5,6 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import "./lib/auth";
 import passport from "./lib/auth";
 import { pool } from "@workspace/db";
 
@@ -66,8 +65,9 @@ app.use(
   })
 );
 
+// Passport is used only for OAuth strategy, not for session management.
+// Sessions are managed explicitly via req.session.userId.
 app.use(passport.initialize());
-app.use(passport.session());
 
 app.use("/api", router);
 

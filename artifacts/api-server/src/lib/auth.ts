@@ -70,21 +70,4 @@ passport.use(
   )
 );
 
-passport.serializeUser((user: Express.User, done) => {
-  done(null, (user as { id: string }).id);
-});
-
-passport.deserializeUser(async (id: string, done) => {
-  try {
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.id, id))
-      .limit(1);
-    done(null, user ?? null);
-  } catch (err) {
-    done(err, null);
-  }
-});
-
 export default passport;

@@ -4,6 +4,8 @@ import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
 
+const FRONTEND_URL = process.env.FRONTEND_URL ?? "/";
+
 router.get(
   "/auth/google",
   passport.authenticate("google", { scope: ["profile", "email"] })
@@ -12,11 +14,19 @@ router.get(
 router.get(
   "/auth/google/callback",
   passport.authenticate("google", {
-    failureRedirect: "/?auth_error=1",
-    session: true,
+    failureRedirect: `${FRONTEND_URL}?auth_error=1`,
+    session: false,
   }),
-  (_req, res) => {
-    res.redirect("/");
+  (req, res) => {
+    if (!req.user) {
+      res.redirect(`${FRONTEND_URL}?auth_error=1`);
+      return;
+    }
+    const user = req.user as { id: string };
+    req.session.userId = user.id;
+    req.session.save(() => {
+      res.redirect(FRONTEND_URL);
+    });
   }
 );
 
@@ -39,17 +49,15 @@ router.get("/auth/me", requireAuth, (req, res) => {
   });
 });
 
-router.post("/auth/logout", requireAuth, (req, res) => {
-  req.logout((err) => {
+router.get("/auth/logout", requireAuth, (req, res) => {
+  req.session.destroy((err) => {
     if (err) {
-      req.log.error({ err }, "Error during logout");
+      req.log.error({ err }, "Error destroying session on logout");
       res.status(500).json({ error: "LOGOUT_ERROR", message: "Failed to log out" });
       return;
     }
-    req.session.destroy(() => {
-      res.clearCookie("connect.sid");
-      res.json({ message: "Logged out successfully" });
-    });
+    res.clearCookie("connect.sid");
+    res.json({ message: "Logged out successfully" });
   });
 });
 

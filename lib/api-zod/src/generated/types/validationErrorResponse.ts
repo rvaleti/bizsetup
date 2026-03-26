@@ -5,7 +5,9 @@
  * MSME Setup Automation Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { ErrorResponse } from "./errorResponse";
 
-export interface HealthStatus {
-  status: string;
-}
+/**
+ * Validation error
+ */
+export type ValidationErrorResponse = ErrorResponse;

@@ -5,7 +5,8 @@
  * MSME Setup Automation Platform API
  * OpenAPI spec version: 0.1.0
  */
+import type { StepStatus } from "./stepStatus";
 
-export interface HealthStatus {
-  status: string;
+export interface UpdateStepRequest {
+  status: StepStatus;
 }

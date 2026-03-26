@@ -3,13 +3,26 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: MSME Setup Automation Platform API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: companies
+    description: Company management
+  - name: pipelines
+    description: Pipeline management
+  - name: events
+    description: Pipeline events and chatter
+  - name: notifications
+    description: User notifications
+  - name: users
+    description: User management (admin)
+
 paths:
   /healthz:
     get:
@@ -24,7 +37,491 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── Auth ──────────────────────────────────────────────────────────────────
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  # ── Users (admin) ─────────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users (admin only)
+      parameters:
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /users/{userId}/role:
+    patch:
+      operationId: updateUserRole
+      tags: [users]
+      summary: Update user role (admin only)
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRoleRequest"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Companies ─────────────────────────────────────────────────────────────
+  /companies:
+    get:
+      operationId: listCompanies
+      tags: [companies]
+      summary: List companies
+      description: Customers see their own companies; admins and facilitators see all.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/PipelineStatus"
+        - name: entityType
+          in: query
+          schema:
+            $ref: "#/components/schemas/EntityType"
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated list of companies with pipeline summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+    post:
+      operationId: createCompany
+      tags: [companies]
+      summary: Create a new company registration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCompanyRequest"
+      responses:
+        "201":
+          description: Company created with pipeline initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyWithPipeline"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /companies/{companyId}:
+    get:
+      operationId: getCompany
+      tags: [companies]
+      summary: Get company details
+      parameters:
+        - name: companyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Company with pipeline details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyWithPipeline"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Pipelines ─────────────────────────────────────────────────────────────
+  /pipelines/{pipelineId}:
+    get:
+      operationId: getPipeline
+      tags: [pipelines]
+      summary: Get pipeline details with steps
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pipeline with steps and company info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /pipelines/{pipelineId}/status:
+    patch:
+      operationId: updatePipelineStatus
+      tags: [pipelines]
+      summary: Update pipeline status
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePipelineStatusRequest"
+      responses:
+        "200":
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /pipelines/{pipelineId}/assign:
+    post:
+      operationId: assignFacilitator
+      tags: [pipelines]
+      summary: Assign facilitator to pipeline (admin only)
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignFacilitatorRequest"
+      responses:
+        "200":
+          description: Pipeline with facilitator assigned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /pipelines/{pipelineId}/steps/{stepId}:
+    patch:
+      operationId: updatePipelineStep
+      tags: [pipelines]
+      summary: Update a pipeline step status
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stepId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStepRequest"
+      responses:
+        "200":
+          description: Updated step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStep"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ── Events / Chatter ──────────────────────────────────────────────────────
+  /pipelines/{pipelineId}/events:
+    get:
+      operationId: listPipelineEvents
+      tags: [events]
+      summary: List pipeline events and chatter
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Paginated list of pipeline events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    post:
+      operationId: postPipelineComment
+      tags: [events]
+      summary: Post a comment to the pipeline chatter
+      parameters:
+        - name: pipelineId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostCommentRequest"
+      responses:
+        "201":
+          description: Comment posted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineEvent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  # ── Notifications ─────────────────────────────────────────────────────────
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for current user
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /notifications/{notificationId}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications/read-all:
+    patch:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ── Admin Stats ───────────────────────────────────────────────────────────
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [users]
+      summary: Get admin dashboard statistics (admin only)
+      responses:
+        "200":
+          description: Admin statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
 components:
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +531,514 @@ components:
       required:
         - status
 
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
+
+    UserRole:
+      type: string
+      enum: [CUSTOMER, FACILITATOR, ADMIN]
+
+    EntityType:
+      type: string
+      enum:
+        - LLP
+        - PRIVATE_LIMITED
+        - OPC
+        - PARTNERSHIP
+        - SOLE_PROPRIETORSHIP
+        - SECTION_8
+        - PUBLIC_LIMITED
+
+    PipelineStatus:
+      type: string
+      enum:
+        - NEW
+        - ASSIGNED
+        - IN_PROGRESS
+        - WAITING
+        - COMPLETED
+        - REJECTED
+        - RECTIFICATION
+
+    StepStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, COMPLETED, SKIPPED]
+
+    EventType:
+      type: string
+      enum:
+        - STATUS_CHANGE
+        - ASSIGNED
+        - COMMENT
+        - STEP_COMPLETE
+        - DOCUMENT_UPLOADED
+        - SYSTEM
+
+    NotificationType:
+      type: string
+      enum:
+        - STATUS_CHANGE
+        - ASSIGNED
+        - COMMENT
+        - STEP_COMPLETE
+        - REJECTED
+        - RECTIFICATION
+        - SYSTEM
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        role:
+          $ref: "#/components/schemas/UserRole"
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - name
+        - role
+        - createdAt
+
+    Company:
+      type: object
+      properties:
+        id:
+          type: string
+        customerId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pincode:
+          type: string
+        entityType:
+          $ref: "#/components/schemas/EntityType"
+        primaryPhone:
+          type: string
+        alternatePhone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - customerId
+        - name
+        - address
+        - city
+        - state
+        - pincode
+        - entityType
+        - primaryPhone
+        - createdAt
+        - updatedAt
+
+    PipelineStep:
+      type: object
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+        stepKey:
+          type: string
+        stepName:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/StepStatus"
+        order:
+          type: string
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedBy:
+          type: string
+          nullable: true
+      required:
+        - id
+        - pipelineId
+        - stepKey
+        - stepName
+        - status
+        - order
+
+    Pipeline:
+      type: object
+      properties:
+        id:
+          type: string
+        companyId:
+          type: string
+        assignedFacilitatorId:
+          type: string
+          nullable: true
+        assignedFacilitator:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        status:
+          $ref: "#/components/schemas/PipelineStatus"
+        currentStep:
+          type: string
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+        rectificationNotes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - companyId
+        - status
+        - createdAt
+        - updatedAt
+
+    PipelineDetail:
+      allOf:
+        - $ref: "#/components/schemas/Pipeline"
+        - type: object
+          properties:
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/PipelineStep"
+            company:
+              $ref: "#/components/schemas/Company"
+            customer:
+              $ref: "#/components/schemas/User"
+          required:
+            - steps
+            - company
+            - customer
+
+    CompanyWithPipeline:
+      allOf:
+        - $ref: "#/components/schemas/Company"
+        - type: object
+          properties:
+            pipeline:
+              $ref: "#/components/schemas/Pipeline"
+            customer:
+              $ref: "#/components/schemas/User"
+          required:
+            - pipeline
+            - customer
+
+    PipelineEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        pipelineId:
+          type: string
+        actorId:
+          type: string
+          nullable: true
+        actor:
+          $ref: "#/components/schemas/User"
+          nullable: true
+        eventType:
+          $ref: "#/components/schemas/EventType"
+        previousStatus:
+          type: string
+          nullable: true
+        newStatus:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - pipelineId
+        - eventType
+        - createdAt
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        pipelineId:
+          type: string
+          nullable: true
+        type:
+          $ref: "#/components/schemas/NotificationType"
+        message:
+          type: string
+        read:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - type
+        - message
+        - read
+        - createdAt
+
+    CompanyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanyWithPipeline"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - data
+        - total
+        - page
+        - pageSize
+        - totalPages
+
+    EventListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineEvent"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - data
+        - total
+        - page
+        - pageSize
+        - totalPages
+
+    NotificationListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Notification"
+        total:
+          type: integer
+        unreadCount:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+      required:
+        - data
+        - total
+        - unreadCount
+        - page
+        - pageSize
+        - totalPages
+
+    CreateCompanyRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        address:
+          type: string
+          minLength: 1
+        city:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          minLength: 1
+        pincode:
+          type: string
+          pattern: "^[0-9]{6}$"
+        entityType:
+          $ref: "#/components/schemas/EntityType"
+        primaryPhone:
+          type: string
+          minLength: 10
+        alternatePhone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          format: email
+          nullable: true
+        description:
+          type: string
+          nullable: true
+      required:
+        - name
+        - address
+        - city
+        - state
+        - pincode
+        - entityType
+        - primaryPhone
+
+    UpdatePipelineStatusRequest:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/PipelineStatus"
+        message:
+          type: string
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+        rectificationNotes:
+          type: string
+          nullable: true
+      required:
+        - status
+
+    AssignFacilitatorRequest:
+      type: object
+      properties:
+        facilitatorId:
+          type: string
+        message:
+          type: string
+          nullable: true
+      required:
+        - facilitatorId
+
+    UpdateStepRequest:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/StepStatus"
+      required:
+        - status
+
+    PostCommentRequest:
+      type: object
+      properties:
+        message:
+          type: string
+          minLength: 1
+      required:
+        - message
+
+    UpdateUserRoleRequest:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/UserRole"
+      required:
+        - role
+
+    AdminStats:
+      type: object
+      properties:
+        totalCompanies:
+          type: integer
+        byStatus:
+          type: object
+          additionalProperties:
+            type: integer
+        byEntityType:
+          type: object
+          additionalProperties:
+            type: integer
+        totalUsers:
+          type: integer
+        totalFacilitators:
+          type: integer
+        avgPipelineAgeDays:
+          type: number
+        companiesThisMonth:
+          type: integer
+        facilitatorWorkload:
+          type: array
+          items:
+            type: object
+            properties:
+              facilitator:
+                $ref: "#/components/schemas/User"
+              assignedCount:
+                type: integer
+            required:
+              - facilitator
+              - assignedCount
+      required:
+        - totalCompanies
+        - byStatus
+        - byEntityType
+        - totalUsers
+        - totalFacilitators
+        - avgPipelineAgeDays
+        - companiesThisMonth
+        - facilitatorWorkload

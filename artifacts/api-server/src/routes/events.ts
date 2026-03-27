@@ -38,7 +38,7 @@ async function canAccessPipeline(actor: User, pipelineId: string): Promise<boole
 
 router.get("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId } = req.params;
+  const { pipelineId } = req.params as Record<string, string>;
   const { page = "1", pageSize = "50" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 50));
@@ -95,7 +95,7 @@ router.get("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
 
 router.post("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId } = req.params;
+  const { pipelineId } = req.params as Record<string, string>;
   const { message } = req.body as { message: string };
 
   if (!message?.trim()) {

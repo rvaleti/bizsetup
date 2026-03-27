@@ -129,7 +129,7 @@ router.post("/pipelines", requireAuth, async (req, res) => {
 
 router.get("/pipelines/:pipelineId", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId } = req.params;
+  const { pipelineId } = req.params as Record<string, string>;
 
   try {
     const [pipeline] = await db
@@ -159,7 +159,7 @@ router.get("/pipelines/:pipelineId", requireAuth, async (req, res) => {
 
 router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId } = req.params;
+  const { pipelineId } = req.params as Record<string, string>;
   const { status, message, rejectionReason, rectificationNotes } = req.body as {
     status: string;
     message?: string;
@@ -260,7 +260,7 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
 
 router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId } = req.params;
+  const { pipelineId } = req.params as Record<string, string>;
   const { facilitatorId, message } = req.body as { facilitatorId: string; message?: string };
 
   if (actor.role !== "ADMIN") {
@@ -347,7 +347,7 @@ router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
 
 router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { pipelineId, stepId } = req.params;
+  const { pipelineId, stepId } = req.params as Record<string, string>;
   const { status } = req.body as { status: string };
 
   if (!status) {

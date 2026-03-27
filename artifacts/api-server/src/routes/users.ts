@@ -26,7 +26,7 @@ router.get("/users", requireRole("ADMIN"), async (req, res) => {
 });
 
 router.patch("/users/:userId/role", requireRole("ADMIN"), async (req, res) => {
-  const { userId } = req.params;
+  const { userId } = req.params as Record<string, string>;
   const { role } = req.body as { role: string };
 
   if (!role || !["CUSTOMER", "FACILITATOR", "ADMIN"].includes(role)) {

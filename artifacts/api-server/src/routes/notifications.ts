@@ -70,7 +70,7 @@ router.patch("/notifications/read-all", requireAuth, async (req, res) => {
 
 router.patch("/notifications/:notificationId/read", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { notificationId } = req.params;
+  const { notificationId } = req.params as Record<string, string>;
 
   try {
     const [notification] = await db

@@ -1,0 +1,18 @@
+packages:
+  "framer-motion": "For smooth layout transitions and page entry animations"
+  "recharts": "For the admin dashboard statistics and charts"
+  "date-fns": "For formatting timestamps in chatter, notifications, and events"
+  "@hookform/resolvers": "For integrating Zod schemas with react-hook-form"
+  "zod": "For frontend schema validation"
+  "clsx": "For conditional class name joining"
+  "tailwind-merge": "For merging tailwind classes safely"
+
+images:
+  - path: "artifacts/web-app/public/images/login-bg.png"
+    description: "Abstract professional architectural glass facade with blue and indigo reflections, corporate minimal clean style"
+    aspect_ratio: "16:9"
+
+notes:
+  - API requests use relative paths starting with /api
+  - Auth is session based; no tokens are stored on the frontend
+  - Real-time notifications connect to /api/notifications/sse via EventSource

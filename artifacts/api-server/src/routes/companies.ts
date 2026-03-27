@@ -6,7 +6,7 @@ import {
   pipelineStepsTable,
   usersTable,
 } from "@workspace/db/schema";
-import { eq, and, or, ilike, sql } from "drizzle-orm";
+import { eq, and, or, ilike, sql, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { DEFAULT_PIPELINE_STEPS } from "../lib/pipelineSteps";
@@ -69,8 +69,7 @@ router.get("/companies", requireAuth, async (req, res) => {
         ? await db
             .select()
             .from(pipelinesTable)
-            .where(sql`${pipelinesTable.companyId} = ANY(${sql.raw(`ARRAY[${companyIds.map(() => "?").join(",")}]`)})`
-            )
+            .where(inArray(pipelinesTable.companyId, companyIds))
         : [];
 
     const pipelineMap = new Map(pipelines.map((p) => [p.companyId, p]));
@@ -226,7 +225,7 @@ router.post("/companies", requireAuth, async (req, res) => {
 
 router.get("/companies/:companyId", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { companyId } = req.params;
+  const { companyId } = req.params as Record<string, string>;
 
   try {
     const [company] = await db

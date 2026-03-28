@@ -24,7 +24,7 @@ export default function CustomerDashboard() {
     resolver: zodResolver(CreateCompanyInput),
     defaultValues: {
       name: "", address: "", city: "", state: "", pincode: "", 
-      entityType: "PRIVATE_LIMITED", primaryPhone: "", email: ""
+      entityType: "PRIVATE_LIMITED", primaryPhone: "", alternatePhone: "", email: ""
     }
   });
 
@@ -74,8 +74,8 @@ export default function CustomerDashboard() {
                           <SelectItem value="SOLE_PROPRIETORSHIP">Sole Proprietorship</SelectItem>
                           <SelectItem value="PARTNERSHIP">Partnership</SelectItem>
                           <SelectItem value="LLP">LLP</SelectItem>
-                          <SelectItem value="PRIVATE_LIMITED">Private Limited</SelectItem>
-                          <SelectItem value="OPC">One Person Company</SelectItem>
+                          <SelectItem value="PRIVATE_LIMITED">Private Limited (Pvt Ltd)</SelectItem>
+                          <SelectItem value="OPC">One Person Company (OPC)</SelectItem>
                           <SelectItem value="PUBLIC_LIMITED">Public Limited</SelectItem>
                           <SelectItem value="SECTION_8">Section 8</SelectItem>
                         </SelectContent>
@@ -84,7 +84,15 @@ export default function CustomerDashboard() {
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="primaryPhone" render={({ field }) => (
-                    <FormItem><FormLabel>Primary Phone</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
+                    <FormItem><FormLabel>Primary Phone</FormLabel><FormControl><Input placeholder="+91 98765 43210" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField control={form.control} name="alternatePhone" render={({ field }) => (
+                    <FormItem><FormLabel>Alternate Phone <span className="text-slate-400 text-xs">(optional)</span></FormLabel><FormControl><Input placeholder="+91 98765 43210" {...field} /></FormControl><FormMessage /></FormItem>
+                  )} />
+                  <FormField control={form.control} name="email" render={({ field }) => (
+                    <FormItem><FormLabel>Email <span className="text-slate-400 text-xs">(optional)</span></FormLabel><FormControl><Input type="email" placeholder="company@example.com" {...field} /></FormControl><FormMessage /></FormItem>
                   )} />
                 </div>
                 <FormField control={form.control} name="address" render={({ field }) => (

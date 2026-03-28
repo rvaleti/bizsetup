@@ -23,7 +23,8 @@ export function usePipelineEvents(pipelineId: string) {
       const res = await fetch(`/api/pipelines/${pipelineId}/events`);
       if (!res.ok) throw new Error("Failed to fetch events");
       const data = await res.json();
-      return z.array(PipelineEventSchema).parse(data.data || []);
+      const parsed = z.array(PipelineEventSchema).parse(data.data || []);
+      return [...parsed].reverse();
     },
     enabled: !!pipelineId,
   });

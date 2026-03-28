@@ -2,7 +2,7 @@ import { usePipelineEvents, usePostComment } from "@/hooks/use-events";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { getInitials } from "@/lib/utils";
 import { MessageSquare, Settings2, CheckCircle2, AlertCircle } from "lucide-react";
@@ -13,6 +13,13 @@ export function Chatter({ pipelineId }: { pipelineId: string }) {
   const postComment = usePostComment();
   const [message, setMessage] = useState("");
   const { toast } = useToast();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [events]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,7 +36,10 @@ export function Chatter({ pipelineId }: { pipelineId: string }) {
 
   return (
     <div className="flex flex-col h-full bg-slate-50/50 rounded-xl border border-slate-200 overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      <div className="px-4 sm:px-6 py-4 border-b border-slate-200 bg-white shrink-0">
+        <h3 className="font-semibold text-slate-900 text-sm">Activity & Comments</h3>
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
         {events?.length === 0 ? (
           <div className="text-center py-10 text-slate-400">
             <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-20" />
@@ -66,7 +76,6 @@ export function Chatter({ pipelineId }: { pipelineId: string }) {
               );
             }
 
-            // System / Status events
             return (
               <div key={evt.id} className="flex gap-3 items-center justify-center py-1">
                 <div className="h-[1px] flex-1 bg-slate-200"></div>
@@ -88,7 +97,7 @@ export function Chatter({ pipelineId }: { pipelineId: string }) {
           <Textarea 
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message..."
+            placeholder="Write a comment or follow-up message..."
             className="min-h-[44px] h-[44px] resize-none py-3"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {

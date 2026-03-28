@@ -164,6 +164,15 @@ pnpm --filter @workspace/web-app exec tsc --noEmit
 pnpm --filter @workspace/scripts run seed-admin <email>
 ```
 
+## Integration Notes (Task #8)
+
+- **OAuth redirect**: After Google OAuth callback, backend redirects to `/` (FRONTEND_URL). Login.tsx detects the authenticated user and redirects to the role-appropriate dashboard using `useEffect`.
+- **Query invalidation**: All company-related mutations use `predicate` matching (startsWith `/api/companies`) to invalidate both filtered and unfiltered company queries in TanStack Query cache.
+- **Events ordering**: Pipeline events are returned newest-first from the API; the `usePipelineEvents` hook reverses them to show oldest-first (chronological chat order).
+- **Admin assign facilitator**: Company detail page (`/dashboard/company/:id`) shows an "Assign Facilitator" panel for ADMIN users, using the `/api/pipelines/:id/assign` endpoint.
+- **URL param hygiene**: `useCompanies` hook filters out `undefined`/empty string params before building the query string, preventing invalid `?status=undefined` params.
+- **SSE**: Notification bell connects to `/api/notifications/sse` with `withCredentials: true`. The API sets `X-Accel-Buffering: no` to disable proxy buffering.
+
 ## Session Notes
 
 - Sessions use `connect-pg-simple` (PostgreSQL-backed). The `session` table must exist (created manually; `createTableIfMissing: true` fails when bundled with esbuild).

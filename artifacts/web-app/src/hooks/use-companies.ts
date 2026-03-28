@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { UserSchema } from "./use-auth";
-import type { User } from "./use-auth";
 
 export const EntityTypeEnum = z.enum(["LLP", "PRIVATE_LIMITED", "OPC", "PARTNERSHIP", "SOLE_PROPRIETORSHIP", "SECTION_8", "PUBLIC_LIMITED"]);
 
@@ -110,7 +109,7 @@ export function useCreateCompany() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
     },
   });
 }

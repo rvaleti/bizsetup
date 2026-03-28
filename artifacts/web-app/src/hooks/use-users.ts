@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { UserSchema } from "./use-auth";
 
-export function useUsers(role?: string) {
+export function useUsers(role?: string, enabled = true) {
   const queryStr = role ? `?role=${role}` : "";
   return useQuery({
     queryKey: [`/api/users${queryStr}`],
@@ -10,7 +10,8 @@ export function useUsers(role?: string) {
       const res = await fetch(`/api/users${queryStr}`);
       if (!res.ok) throw new Error("Failed to fetch users");
       return z.array(UserSchema).parse(await res.json());
-    }
+    },
+    enabled,
   });
 }
 

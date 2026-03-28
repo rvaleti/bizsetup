@@ -55,7 +55,7 @@ export function useUpdatePipelineStatus() {
     },
     onSuccess: (_, { pipelineId }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/companies`] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
     }
   });
 }
@@ -95,7 +95,7 @@ export function useAssignFacilitator() {
     },
     onSuccess: (_, { pipelineId }) => {
       queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/companies"] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
     }
   });
 }

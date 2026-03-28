@@ -1,19 +1,42 @@
 import { useCompany } from "@/hooks/use-companies";
-import { usePipeline } from "@/hooks/use-pipelines";
+import { usePipeline, useAssignFacilitator } from "@/hooks/use-pipelines";
+import { useUsers } from "@/hooks/use-users";
+import { useAuth } from "@/hooks/use-auth";
 import { useRoute } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { PipelineStepper } from "@/components/pipeline-stepper";
 import { Chatter } from "@/components/chatter";
-import { Building2, MapPin, Phone, Mail, UserCircle } from "lucide-react";
+import { Building2, MapPin, Phone, Mail, UserCircle, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
 export default function CustomerCompanyDetail() {
   const [, params] = useRoute("/dashboard/company/:id");
   const companyId = params?.id || "";
   
+  const { data: user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const { data: company, isLoading: companyLoading } = useCompany(companyId);
   const pipelineId = company?.pipeline?.id || "";
   const { data: pipeline, isLoading: pipelineLoading } = usePipeline(pipelineId);
+  const { data: facilitators } = useUsers("FACILITATOR", isAdmin);
+  const assignFacilitator = useAssignFacilitator();
+  const { toast } = useToast();
+  const [selectedFacilitatorId, setSelectedFacilitatorId] = useState("");
+
+  const handleAssign = async () => {
+    if (!selectedFacilitatorId || !pipelineId) return;
+    try {
+      await assignFacilitator.mutateAsync({ pipelineId, facilitatorId: selectedFacilitatorId });
+      toast({ title: "Facilitator assigned successfully" });
+      setSelectedFacilitatorId("");
+    } catch (err) {
+      toast({ title: "Failed to assign facilitator", description: err instanceof Error ? err.message : "An unexpected error occurred", variant: "destructive" });
+    }
+  };
 
   if (companyLoading) return <div className="space-y-6"><Skeleton className="h-40 w-full rounded-2xl" /><div className="flex gap-6"><Skeleton className="h-[500px] flex-1 rounded-2xl" /><Skeleton className="h-[500px] w-96 rounded-2xl" /></div></div>;
   if (!company) return <div>Company not found</div>;
@@ -41,17 +64,48 @@ export default function CustomerCompanyDetail() {
             </div>
           </div>
           
-          {pipeline?.assignedFacilitator && (
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-4 min-w-[250px]">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                <UserCircle className="w-6 h-6" />
+          <div className="flex flex-col gap-3">
+            {pipeline?.assignedFacilitator ? (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-4 min-w-[250px]">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                  <UserCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Assigned Facilitator</p>
+                  <p className="font-semibold text-slate-900">{pipeline.assignedFacilitator.name}</p>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Assigned Facilitator</p>
-                <p className="font-semibold text-slate-900">{pipeline.assignedFacilitator.name}</p>
+            ) : null}
+            
+            {isAdmin && pipelineId && (
+              <div className="bg-orange-50 p-4 rounded-xl border border-orange-200 min-w-[250px]">
+                <p className="text-xs text-orange-700 font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  {pipeline?.assignedFacilitator ? "Reassign Facilitator" : "Assign Facilitator"}
+                </p>
+                <div className="flex gap-2">
+                  <Select value={selectedFacilitatorId} onValueChange={setSelectedFacilitatorId}>
+                    <SelectTrigger className="flex-1 bg-white h-9 text-sm">
+                      <SelectValue placeholder="Select facilitator" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {facilitators?.map(f => (
+                        <SelectItem key={f.id} value={f.id}>{f.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    onClick={handleAssign}
+                    disabled={!selectedFacilitatorId || assignFacilitator.isPending}
+                    className="shrink-0"
+                  >
+                    Assign
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

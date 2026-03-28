@@ -5,14 +5,18 @@ import {
   pipelinesTable,
   pipelineStepsTable,
   usersTable,
+  entityTypeEnum,
 } from "@workspace/db/schema";
-import { eq, and, or, ilike, sql, inArray } from "drizzle-orm";
+import { eq, and, ilike, sql, inArray, SQL } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { DEFAULT_PIPELINE_STEPS } from "../lib/pipelineSteps";
 import { User } from "@workspace/db/schema";
 
 const router: IRouter = Router();
+
+type EntityType = typeof entityTypeEnum.enumValues[number];
+const VALID_ENTITY_TYPES = new Set<string>(entityTypeEnum.enumValues);
 
 router.get("/companies", requireAuth, async (req, res) => {
   const actor = req.user as User;
@@ -22,29 +26,29 @@ router.get("/companies", requireAuth, async (req, res) => {
   const offset = (pageNum - 1) * pageSizeNum;
 
   try {
-    const conditions = [];
+    const conditions: SQL[] = [];
 
     if (actor.role === "CUSTOMER") {
       conditions.push(eq(companiesTable.customerId, actor.id));
     } else if (actor.role === "FACILITATOR") {
-      const assignedPipelineIds = db
+      const assignedCompanyIds = await db
         .select({ companyId: pipelinesTable.companyId })
         .from(pipelinesTable)
         .where(eq(pipelinesTable.assignedFacilitatorId, actor.id));
-      conditions.push(
-        or(
-          eq(companiesTable.customerId, actor.id),
-          sql`${companiesTable.id} IN (${assignedPipelineIds})`
-        )
-      );
+      const ids = assignedCompanyIds.map((r) => r.companyId);
+      if (ids.length === 0) {
+        res.json({ data: [], total: 0, page: pageNum, pageSize: pageSizeNum, totalPages: 0 });
+        return;
+      }
+      conditions.push(inArray(companiesTable.id, ids));
     }
 
     if (search) {
       conditions.push(ilike(companiesTable.name, `%${search}%`));
     }
 
-    if (entityType) {
-      conditions.push(eq(companiesTable.entityType, entityType as any));
+    if (entityType && VALID_ENTITY_TYPES.has(entityType)) {
+      conditions.push(eq(companiesTable.entityType, entityType as EntityType));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -77,23 +81,13 @@ router.get("/companies", requireAuth, async (req, res) => {
     const customerIds = [...new Set(companiesList.map((c) => c.customerId))];
     const customers =
       customerIds.length > 0
-        ? await db.select().from(usersTable).where(
-            sql`${usersTable.id} = ANY(ARRAY[${sql.raw(customerIds.map((id) => `'${id}'`).join(","))}]::text[])`
-          )
+        ? await db.select().from(usersTable).where(inArray(usersTable.id, customerIds))
         : [];
     const customerMap = new Map(customers.map((u) => [u.id, u]));
 
     const data = await Promise.all(
       companiesList.map(async (company) => {
-        let pipeline = pipelineMap.get(company.id);
-        if (!pipeline) {
-          const [p] = await db
-            .select()
-            .from(pipelinesTable)
-            .where(eq(pipelinesTable.companyId, company.id))
-            .limit(1);
-          pipeline = p;
-        }
+        const pipeline = pipelineMap.get(company.id);
 
         let facilitator = null;
         if (pipeline?.assignedFacilitatorId) {
@@ -160,6 +154,13 @@ router.post("/companies", requireAuth, async (req, res) => {
     return;
   }
 
+  if (!VALID_ENTITY_TYPES.has(body.entityType)) {
+    res.status(422).json({ error: "VALIDATION_ERROR", message: `Invalid entityType: ${body.entityType}` });
+    return;
+  }
+
+  const entityType = body.entityType as EntityType;
+
   try {
     const companyId = randomUUID();
     const pipelineId = randomUUID();
@@ -173,7 +174,7 @@ router.post("/companies", requireAuth, async (req, res) => {
         city: body.city,
         state: body.state,
         pincode: body.pincode,
-        entityType: body.entityType as any,
+        entityType,
         primaryPhone: body.primaryPhone,
         alternatePhone: body.alternatePhone ?? null,
         email: body.email ?? null,
@@ -242,6 +243,24 @@ router.get("/companies/:companyId", requireAuth, async (req, res) => {
     if (actor.role === "CUSTOMER" && company.customerId !== actor.id) {
       res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
       return;
+    }
+
+    if (actor.role === "FACILITATOR") {
+      const [assigned] = await db
+        .select({ id: pipelinesTable.id })
+        .from(pipelinesTable)
+        .where(
+          and(
+            eq(pipelinesTable.companyId, companyId),
+            eq(pipelinesTable.assignedFacilitatorId, actor.id)
+          )
+        )
+        .limit(1);
+
+      if (!assigned) {
+        res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
+        return;
+      }
     }
 
     const [pipeline] = await db

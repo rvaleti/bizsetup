@@ -7,7 +7,7 @@ import {
   usersTable,
   User,
 } from "@workspace/db/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
@@ -68,10 +68,7 @@ router.get("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
 
     const actors =
       actorIds.length > 0
-        ? await db
-            .select()
-            .from(usersTable)
-            .where(sql`${usersTable.id} = ANY(ARRAY[${sql.raw(actorIds.map((id) => `'${id}'`).join(","))}]::text[])`)
+        ? await db.select().from(usersTable).where(inArray(usersTable.id, actorIds))
         : [];
     const actorMap = new Map(actors.map((u) => [u.id, u]));
 

@@ -8,14 +8,19 @@ import {
   usersTable,
   User,
 } from "@workspace/db/schema";
-import { eq, and, sql, asc } from "drizzle-orm";
+import { eq, and, asc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
+import { DEFAULT_PIPELINE_STEPS } from "../lib/pipelineSteps";
 
 const router: IRouter = Router();
 
-const VALID_TRANSITIONS: Record<string, string[]> = {
+type PipelineStatus = "NEW" | "ASSIGNED" | "IN_PROGRESS" | "WAITING" | "COMPLETED" | "REJECTED" | "RECTIFICATION";
+type StepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED";
+type NotificationType = "STATUS_CHANGE" | "ASSIGNED" | "COMMENT" | "STEP_COMPLETE" | "REJECTED" | "RECTIFICATION" | "SYSTEM";
+
+const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   NEW: ["ASSIGNED", "REJECTED"],
   ASSIGNED: ["IN_PROGRESS", "REJECTED"],
   IN_PROGRESS: ["WAITING", "COMPLETED", "REJECTED", "RECTIFICATION"],
@@ -24,6 +29,9 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   COMPLETED: [],
   REJECTED: [],
 };
+
+const VALID_PIPELINE_STATUSES = new Set<string>(Object.keys(VALID_TRANSITIONS));
+const VALID_STEP_STATUSES = new Set<string>(["PENDING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]);
 
 async function getPipelineDetail(pipelineId: string) {
   const [pipeline] = await db
@@ -39,6 +47,21 @@ async function getPipelineDetail(pipelineId: string) {
     .from(pipelineStepsTable)
     .where(eq(pipelineStepsTable.pipelineId, pipelineId))
     .orderBy(asc(pipelineStepsTable.order));
+
+  const events = await db
+    .select({
+      event: pipelineEventsTable,
+      actor: usersTable,
+    })
+    .from(pipelineEventsTable)
+    .leftJoin(usersTable, eq(pipelineEventsTable.actorId, usersTable.id))
+    .where(eq(pipelineEventsTable.pipelineId, pipelineId))
+    .orderBy(asc(pipelineEventsTable.createdAt));
+
+  const eventsWithActors = events.map(({ event, actor }) => ({
+    ...event,
+    actor: actor ?? null,
+  }));
 
   const [company] = await db
     .select()
@@ -66,6 +89,7 @@ async function getPipelineDetail(pipelineId: string) {
     ...pipeline,
     assignedFacilitator: facilitator,
     steps,
+    events: eventsWithActors,
     company: company ?? null,
     customer: customer ?? null,
   };
@@ -113,10 +137,25 @@ router.post("/pipelines", requireAuth, async (req, res) => {
 
     const pipelineId = randomUUID();
 
-    await db.insert(pipelinesTable).values({
-      id: pipelineId,
-      companyId,
-      status: "NEW",
+    await db.transaction(async (tx) => {
+      await tx.insert(pipelinesTable).values({
+        id: pipelineId,
+        companyId,
+        status: "NEW",
+        currentStep: DEFAULT_PIPELINE_STEPS[0].stepKey,
+      });
+
+      const stepValues = DEFAULT_PIPELINE_STEPS.map((step) => ({
+        id: randomUUID(),
+        pipelineId,
+        stepKey: step.stepKey,
+        stepName: step.stepName,
+        description: step.description,
+        order: step.order,
+        status: "PENDING" as const,
+      }));
+
+      await tx.insert(pipelineStepsTable).values(stepValues);
     });
 
     const detail = await getPipelineDetail(pipelineId);
@@ -172,6 +211,13 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
     return;
   }
 
+  if (!VALID_PIPELINE_STATUSES.has(status)) {
+    res.status(422).json({ error: "VALIDATION_ERROR", message: `Invalid status: ${status}` });
+    return;
+  }
+
+  const newStatus = status as PipelineStatus;
+
   try {
     const [pipeline] = await db
       .select()
@@ -191,29 +237,25 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
     }
 
     const allowed = VALID_TRANSITIONS[pipeline.status] ?? [];
-    if (!allowed.includes(status)) {
+    if (!allowed.includes(newStatus)) {
       res.status(422).json({
         error: "INVALID_TRANSITION",
-        message: `Cannot transition from ${pipeline.status} to ${status}`,
+        message: `Cannot transition from ${pipeline.status} to ${newStatus}`,
       });
       return;
     }
 
-    if ((status === "REJECTED" || status === "RECTIFICATION") && actor.role === "FACILITATOR") {
-      if (status === "REJECTED") {
-        res.status(403).json({ error: "FORBIDDEN", message: "Only admin can reject a pipeline" });
-        return;
-      }
+    if (newStatus === "REJECTED" && actor.role !== "ADMIN") {
+      res.status(403).json({ error: "FORBIDDEN", message: "Only admin can reject a pipeline" });
+      return;
     }
 
-    const updateData: Partial<typeof pipelinesTable.$inferInsert> = {
-      status: status as any,
+    await db.update(pipelinesTable).set({
+      status: newStatus,
       updatedAt: new Date(),
-    };
-    if (rejectionReason) updateData.rejectionReason = rejectionReason;
-    if (rectificationNotes) updateData.rectificationNotes = rectificationNotes;
-
-    await db.update(pipelinesTable).set(updateData).where(eq(pipelinesTable.id, pipelineId));
+      ...(rejectionReason ? { rejectionReason } : {}),
+      ...(rectificationNotes ? { rectificationNotes } : {}),
+    }).where(eq(pipelinesTable.id, pipelineId));
 
     await db.insert(pipelineEventsTable).values({
       id: randomUUID(),
@@ -221,8 +263,8 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
       actorId: actor.id,
       eventType: "STATUS_CHANGE",
       previousStatus: pipeline.status,
-      newStatus: status,
-      message: message ?? `Status changed from ${pipeline.status} to ${status}`,
+      newStatus,
+      message: message ?? `Status changed from ${pipeline.status} to ${newStatus}`,
     });
 
     const [company] = await db
@@ -231,21 +273,23 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
       .where(eq(companiesTable.id, pipeline.companyId))
       .limit(1);
 
-    const notifType = status === "REJECTED" ? "REJECTED" : status === "RECTIFICATION" ? "RECTIFICATION" : "STATUS_CHANGE";
-    const notifMessage = `Pipeline for ${company?.name ?? "your company"} moved to ${status}`;
+    const notifType: NotificationType = newStatus === "REJECTED" ? "REJECTED" : newStatus === "RECTIFICATION" ? "RECTIFICATION" : "STATUS_CHANGE";
+    const notifMessage = `Pipeline for ${company?.name ?? "your company"} moved to ${newStatus}`;
 
-    await createNotification({
-      userId: company?.customerId ?? "",
-      pipelineId,
-      type: notifType as any,
-      message: notifMessage,
-    });
+    if (company?.customerId) {
+      await createNotification({
+        userId: company.customerId,
+        pipelineId,
+        type: notifType,
+        message: notifMessage,
+      });
+    }
 
     if (pipeline.assignedFacilitatorId && pipeline.assignedFacilitatorId !== actor.id) {
       await createNotification({
         userId: pipeline.assignedFacilitatorId,
         pipelineId,
-        type: notifType as any,
+        type: notifType,
         message: notifMessage,
       });
     }
@@ -321,21 +365,21 @@ router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
       .where(eq(companiesTable.id, pipeline.companyId))
       .limit(1);
 
-    const notifMessage = `Pipeline for ${company?.name ?? "company"} assigned to you`;
-
     await createNotification({
       userId: facilitatorId,
       pipelineId,
       type: "ASSIGNED",
-      message: notifMessage,
+      message: `Pipeline for ${company?.name ?? "company"} assigned to you`,
     });
 
-    await createNotification({
-      userId: company?.customerId ?? "",
-      pipelineId,
-      type: "ASSIGNED",
-      message: `${facilitator.name} has been assigned to your company registration`,
-    });
+    if (company?.customerId) {
+      await createNotification({
+        userId: company.customerId,
+        pipelineId,
+        type: "ASSIGNED",
+        message: `${facilitator.name} has been assigned to your company registration`,
+      });
+    }
 
     const detail = await getPipelineDetail(pipelineId);
     res.json(detail);
@@ -354,6 +398,13 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
     res.status(422).json({ error: "VALIDATION_ERROR", message: "status is required" });
     return;
   }
+
+  if (!VALID_STEP_STATUSES.has(status)) {
+    res.status(422).json({ error: "VALIDATION_ERROR", message: `Invalid step status: ${status}` });
+    return;
+  }
+
+  const newStepStatus = status as StepStatus;
 
   try {
     const [pipeline] = await db
@@ -384,21 +435,12 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
       return;
     }
 
-    const updateData: Partial<typeof pipelineStepsTable.$inferInsert> = {
-      status: status as any,
-    };
+    if (newStepStatus === "COMPLETED") {
+      await db
+        .update(pipelineStepsTable)
+        .set({ status: newStepStatus, completedAt: new Date(), completedBy: actor.id })
+        .where(eq(pipelineStepsTable.id, stepId));
 
-    if (status === "COMPLETED") {
-      updateData.completedAt = new Date();
-      updateData.completedBy = actor.id;
-    }
-
-    await db
-      .update(pipelineStepsTable)
-      .set(updateData)
-      .where(eq(pipelineStepsTable.id, stepId));
-
-    if (status === "COMPLETED") {
       await db.insert(pipelineEventsTable).values({
         id: randomUUID(),
         pipelineId,
@@ -442,12 +484,19 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
         .where(eq(companiesTable.id, pipeline.companyId))
         .limit(1);
 
-      await createNotification({
-        userId: company?.customerId ?? "",
-        pipelineId,
-        type: "STEP_COMPLETE",
-        message: `Step "${step.stepName}" completed for ${company?.name ?? "your company"}`,
-      });
+      if (company?.customerId) {
+        await createNotification({
+          userId: company.customerId,
+          pipelineId,
+          type: "STEP_COMPLETE",
+          message: `Step "${step.stepName}" completed for ${company.name}`,
+        });
+      }
+    } else {
+      await db
+        .update(pipelineStepsTable)
+        .set({ status: newStepStatus })
+        .where(eq(pipelineStepsTable.id, stepId));
     }
 
     const [updatedStep] = await db

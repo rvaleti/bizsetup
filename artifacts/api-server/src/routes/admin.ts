@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { companiesTable, pipelinesTable, usersTable } from "@workspace/db/schema";
-import { eq, sql, gte } from "drizzle-orm";
+import { eq, sql, gte, inArray, isNotNull } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -68,27 +68,22 @@ router.get("/admin/stats", requireRole("ADMIN"), async (req, res) => {
         count: sql<number>`count(*)::int`,
       })
       .from(pipelinesTable)
-      .where(sql`${pipelinesTable.assignedFacilitatorId} IS NOT NULL`)
+      .where(isNotNull(pipelinesTable.assignedFacilitatorId))
       .groupBy(pipelinesTable.assignedFacilitatorId);
 
     const facilitatorIds = facilitatorPipelineCounts
       .map((r) => r.facilitatorId)
-      .filter(Boolean) as string[];
+      .filter((id): id is string => id !== null);
 
     const facilitators =
       facilitatorIds.length > 0
-        ? await db
-            .select()
-            .from(usersTable)
-            .where(
-              sql`${usersTable.id} = ANY(ARRAY[${sql.raw(facilitatorIds.map((id) => `'${id}'`).join(","))}]::text[])`
-            )
+        ? await db.select().from(usersTable).where(inArray(usersTable.id, facilitatorIds))
         : [];
 
     const facilitatorMap = new Map(facilitators.map((f) => [f.id, f]));
 
     const facilitatorWorkload = facilitatorPipelineCounts.map((row) => ({
-      facilitator: facilitatorMap.get(row.facilitatorId ?? "") ?? null,
+      facilitator: row.facilitatorId ? (facilitatorMap.get(row.facilitatorId) ?? null) : null,
       assignedCount: row.count,
     }));
 

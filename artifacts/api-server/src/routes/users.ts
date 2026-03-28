@@ -1,22 +1,21 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { usersTable, pipelinesTable, User } from "@workspace/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { usersTable, userRoleEnum } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
+
+type UserRole = typeof userRoleEnum.enumValues[number];
+const VALID_ROLES = new Set<string>(userRoleEnum.enumValues);
 
 router.get("/users", requireRole("ADMIN"), async (req, res) => {
   const { role } = req.query as { role?: string };
 
   try {
-    const conditions = role ? [eq(usersTable.role, role as any)] : [];
-
-    const users = await db
-      .select()
-      .from(usersTable)
-      .where(conditions.length > 0 ? conditions[0] : undefined)
-      .orderBy(usersTable.name);
+    const users = role && VALID_ROLES.has(role)
+      ? await db.select().from(usersTable).where(eq(usersTable.role, role as UserRole)).orderBy(usersTable.name)
+      : await db.select().from(usersTable).orderBy(usersTable.name);
 
     res.json(users);
   } catch (err) {
@@ -29,10 +28,12 @@ router.patch("/users/:userId/role", requireRole("ADMIN"), async (req, res) => {
   const { userId } = req.params as Record<string, string>;
   const { role } = req.body as { role: string };
 
-  if (!role || !["CUSTOMER", "FACILITATOR", "ADMIN"].includes(role)) {
+  if (!role || !VALID_ROLES.has(role)) {
     res.status(422).json({ error: "VALIDATION_ERROR", message: "Valid role is required" });
     return;
   }
+
+  const newRole = role as UserRole;
 
   try {
     const [user] = await db
@@ -48,7 +49,7 @@ router.patch("/users/:userId/role", requireRole("ADMIN"), async (req, res) => {
 
     const [updated] = await db
       .update(usersTable)
-      .set({ role: role as any, updatedAt: new Date() })
+      .set({ role: newRole, updatedAt: new Date() })
       .where(eq(usersTable.id, userId))
       .returning();
 

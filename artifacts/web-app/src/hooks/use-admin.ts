@@ -14,6 +14,10 @@ const AdminStatsSchema = z.object({
     facilitator: UserSchema.nullable().optional(),
     assignedCount: z.number(),
   })),
+  ageDistribution: z.array(z.object({
+    range: z.string(),
+    count: z.number(),
+  })).optional(),
 });
 
 export type AdminStats = z.infer<typeof AdminStatsSchema>;

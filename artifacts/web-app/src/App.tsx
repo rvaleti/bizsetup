@@ -14,6 +14,7 @@ import FacilitatorPipelineDetail from "@/pages/facilitator/pipeline-detail";
 import AdminDashboard from "@/pages/admin/dashboard";
 import AdminCompanies from "@/pages/admin/companies";
 import AdminUsers from "@/pages/admin/users";
+import AdminPipelineDetail from "@/pages/admin/pipeline-detail";
 import NotFound from "@/pages/not-found";
 
 // Layout
@@ -77,6 +78,7 @@ function Router() {
               <Route path="/admin" component={() => <ProtectedRoute component={AdminDashboard} allowedRoles={["ADMIN"]} />} />
               <Route path="/admin/companies" component={() => <ProtectedRoute component={AdminCompanies} allowedRoles={["ADMIN"]} />} />
               <Route path="/admin/users" component={() => <ProtectedRoute component={AdminUsers} allowedRoles={["ADMIN"]} />} />
+              <Route path="/admin/pipeline/:id" component={() => <ProtectedRoute component={AdminPipelineDetail} allowedRoles={["ADMIN"]} />} />
               
               <Route component={NotFound} />
             </Switch>

@@ -88,6 +88,41 @@ router.get("/admin/stats", requireRole("ADMIN"), async (req, res) => {
       assignedCount: row.count,
     }));
 
+    // Pipeline age distribution buckets (based on pipeline creation date)
+    const ageBucketRows = await db
+      .select({
+        bucket: sql<string>`
+          CASE
+            WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 7 THEN '0-7d'
+            WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 14 THEN '8-14d'
+            WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 30 THEN '15-30d'
+            WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 60 THEN '31-60d'
+            ELSE '60d+'
+          END
+        `,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(pipelinesTable)
+      .groupBy(sql`
+        CASE
+          WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 7 THEN '0-7d'
+          WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 14 THEN '8-14d'
+          WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 30 THEN '15-30d'
+          WHEN EXTRACT(EPOCH FROM (NOW() - ${pipelinesTable.createdAt})) / 86400 <= 60 THEN '31-60d'
+          ELSE '60d+'
+        END
+      `);
+
+    const BUCKET_ORDER = ["0-7d", "8-14d", "15-30d", "31-60d", "60d+"];
+    const ageBucketMap: Record<string, number> = {};
+    for (const row of ageBucketRows) {
+      ageBucketMap[row.bucket] = row.count;
+    }
+    const ageDistribution = BUCKET_ORDER.map((range) => ({
+      range,
+      count: ageBucketMap[range] ?? 0,
+    }));
+
     res.json({
       totalCompanies,
       byStatus,
@@ -97,6 +132,7 @@ router.get("/admin/stats", requireRole("ADMIN"), async (req, res) => {
       avgPipelineAgeDays: Math.round(avgDays * 10) / 10,
       companiesThisMonth,
       facilitatorWorkload,
+      ageDistribution,
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get admin stats");

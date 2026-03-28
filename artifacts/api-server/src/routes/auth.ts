@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import passport from "../lib/auth";
 import { requireAuth } from "../middlewares/requireAuth";
+import { db } from "@workspace/db";
+import { usersTable } from "@workspace/db/schema";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -83,6 +86,93 @@ router.get("/auth/me", requireAuth, (req, res) => {
     role: user.role,
     createdAt: user.createdAt,
   });
+});
+
+router.post("/auth/google/token", async (req, res) => {
+  const { token } = req.body as { token?: string };
+
+  if (!token) {
+    res.status(400).json({ error: "VALIDATION_ERROR", message: "Token is required" });
+    return;
+  }
+
+  try {
+    // Verify token with Google's tokeninfo endpoint
+    const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: `id_token=${token}`,
+    });
+
+    if (!response.ok) {
+      req.log.warn("Invalid token received");
+      res.status(401).json({ error: "UNAUTHORIZED", message: "Invalid token" });
+      return;
+    }
+
+    const tokenData = (await response.json()) as {
+      sub: string;
+      email: string;
+      name?: string;
+      picture?: string;
+    };
+
+    // Find or create user
+    const [user] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.oauthId, tokenData.sub))
+      .limit(1);
+
+    if (!user) {
+      // Create new user
+      const newUsers = await db
+        .insert(usersTable)
+        .values({
+          id: randomUUID(),
+          email: tokenData.email,
+          name: tokenData.name || tokenData.email.split("@")[0],
+          avatarUrl: tokenData.picture || null,
+          role: "CUSTOMER",
+          oauthProvider: "google",
+          oauthId: tokenData.sub,
+        })
+        .returning();
+      
+      const newUser = newUsers[0];
+
+      if (!newUser) {
+        throw new Error("Failed to create user");
+      }
+
+      // Set session and redirect
+      req.session.userId = newUser.id;
+      req.session.save((err) => {
+        if (err) {
+          req.log.error({ err }, "Failed to save session");
+          res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to create session" });
+          return;
+        }
+        req.log.info({ userId: newUser.id }, "New user created via Google Sign-In");
+        res.json({ success: true });
+      });
+    } else {
+      // Existing user
+      req.session.userId = user.id;
+      req.session.save((err) => {
+        if (err) {
+          req.log.error({ err }, "Failed to save session");
+          res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to create session" });
+          return;
+        }
+        req.log.info({ userId: user.id }, "User authenticated via Google Sign-In");
+        res.json({ success: true });
+      });
+    }
+  } catch (err) {
+    req.log.error({ err }, "Google Sign-In token verification failed");
+    res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to verify token" });
+  }
 });
 
 router.get("/auth/logout", requireAuth, (req, res) => {

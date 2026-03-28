@@ -6,6 +6,7 @@ import {
   pipelineStepsTable,
   usersTable,
   entityTypeEnum,
+  pipelineStatusEnum,
   User,
 } from "@workspace/db/schema";
 import { eq, and, ilike, sql, inArray, SQL } from "drizzle-orm";
@@ -18,6 +19,9 @@ const router: IRouter = Router();
 
 type EntityType = typeof entityTypeEnum.enumValues[number];
 const VALID_ENTITY_TYPES = new Set<string>(entityTypeEnum.enumValues);
+
+type PipelineStatus = typeof pipelineStatusEnum.enumValues[number];
+const VALID_PIPELINE_STATUSES = new Set<string>(pipelineStatusEnum.enumValues);
 
 router.get("/companies", requireAuth, async (req, res) => {
   const actor = req.user as User;
@@ -53,10 +57,14 @@ router.get("/companies", requireAuth, async (req, res) => {
     }
 
     if (status) {
+      if (!VALID_PIPELINE_STATUSES.has(status)) {
+        res.status(422).json({ error: "VALIDATION_ERROR", message: `Invalid status: ${status}` });
+        return;
+      }
       const matchingIds = await db
         .select({ companyId: pipelinesTable.companyId })
         .from(pipelinesTable)
-        .where(eq(pipelinesTable.status, status as any));
+        .where(eq(pipelinesTable.status, status as PipelineStatus));
       const ids = matchingIds.map((r) => r.companyId);
       if (ids.length === 0) {
         res.json({ data: [], total: 0, page: pageNum, pageSize: pageSizeNum, totalPages: 0 });

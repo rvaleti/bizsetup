@@ -8,7 +8,7 @@ const router: IRouter = Router();
 
 router.get("/notifications", requireAuth, async (req, res) => {
   const actor = req.user as User;
-  const { unreadOnly = "false", page = "1", pageSize = "20" } = req.query as Record<string, string>;
+  const { unreadOnly = "true", page = "1", pageSize = "20" } = req.query as Record<string, string>;
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const pageSizeNum = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
   const offset = (pageNum - 1) * pageSizeNum;

@@ -241,6 +241,11 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
       return;
     }
 
+    if (actor.role === "CUSTOMER") {
+      res.status(403).json({ error: "FORBIDDEN", message: "Customers cannot modify pipeline status" });
+      return;
+    }
+
     const allowed = VALID_TRANSITIONS[pipeline.status] ?? [];
     if (!allowed.includes(newStatus)) {
       res.status(422).json({
@@ -426,6 +431,11 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
     const hasAccess = await canAccessPipeline(actor, pipeline);
     if (!hasAccess) {
       res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
+      return;
+    }
+
+    if (actor.role === "CUSTOMER") {
+      res.status(403).json({ error: "FORBIDDEN", message: "Customers cannot modify pipeline steps" });
       return;
     }
 

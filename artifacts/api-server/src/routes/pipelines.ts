@@ -339,6 +339,15 @@ router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
       return;
     }
 
+    const TERMINAL_STATES: PipelineStatus[] = ["COMPLETED", "REJECTED"];
+    if (TERMINAL_STATES.includes(pipeline.status as PipelineStatus)) {
+      res.status(422).json({
+        error: "INVALID_TRANSITION",
+        message: `Cannot assign facilitator to a pipeline in ${pipeline.status} state`,
+      });
+      return;
+    }
+
     const [facilitator] = await db
       .select(safeUserFields)
       .from(usersTable)

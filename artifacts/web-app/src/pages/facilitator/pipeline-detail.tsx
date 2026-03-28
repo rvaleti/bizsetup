@@ -24,8 +24,8 @@ export default function FacilitatorPipelineDetail() {
     try {
       await updateStatus.mutateAsync({ pipelineId, status: newStatus });
       toast({ title: "Status updated" });
-    } catch (err: any) {
-      toast({ title: "Failed to update", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to update", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 
@@ -33,8 +33,8 @@ export default function FacilitatorPipelineDetail() {
     try {
       await updateStep.mutateAsync({ pipelineId, stepId, status });
       toast({ title: "Step updated" });
-    } catch (err: any) {
-      toast({ title: "Failed to update step", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to update step", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 

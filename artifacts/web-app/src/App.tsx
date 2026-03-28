@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
+import type { ComponentType } from "react";
 
 // Pages
 import Login from "@/pages/login";
@@ -27,7 +28,13 @@ const queryClient = new QueryClient({
   },
 });
 
-function ProtectedRoute({ component: Component, allowedRoles, ...rest }: any) {
+interface ProtectedRouteProps {
+  component: ComponentType<Record<string, unknown>>;
+  allowedRoles?: string[];
+  [key: string]: unknown;
+}
+
+function ProtectedRoute({ component: Component, allowedRoles, ...rest }: ProtectedRouteProps) {
   const { data: user, isLoading } = useAuth();
 
   if (isLoading) return <div className="h-screen w-full bg-slate-50 flex items-center justify-center animate-pulse"><div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" /></div>;

@@ -19,8 +19,8 @@ export default function AdminUsers() {
     try {
       await updateRole.mutateAsync({ userId, role: newRole });
       toast({ title: "Role updated successfully" });
-    } catch (err: any) {
-      toast({ title: "Failed to update role", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to update role", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     } finally {
       setLoadingId(null);
     }

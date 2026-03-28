@@ -20,8 +20,8 @@ export function Chatter({ pipelineId }: { pipelineId: string }) {
     try {
       await postComment.mutateAsync({ pipelineId, message });
       setMessage("");
-    } catch (err: any) {
-      toast({ title: "Failed to post", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Failed to post", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 

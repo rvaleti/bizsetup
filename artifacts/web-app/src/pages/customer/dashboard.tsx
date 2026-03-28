@@ -34,8 +34,8 @@ export default function CustomerDashboard() {
       toast({ title: "Company registered successfully!" });
       setDialogOpen(false);
       form.reset();
-    } catch (err: any) {
-      toast({ title: "Registration failed", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Registration failed", description: (err instanceof Error ? err.message : String(err)), variant: "destructive" });
     }
   };
 

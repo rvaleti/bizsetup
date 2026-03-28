@@ -8,9 +8,6 @@ import { getInitials } from "@/lib/utils";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { formatDistanceToNow } from "date-fns";
@@ -148,9 +145,29 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function NotificationBell() {
+  const { data: user } = useAuth();
   const { data: { data: notifications = [], unreadCount = 0 } = {} } = useNotifications(false);
   const markRead = useMarkNotificationRead();
   const markAllRead = useMarkAllNotificationsRead();
+  const [, navigate] = useLocation();
+
+  function getPipelineHref(pipelineId: string) {
+    if (!user) return null;
+    if (user.role === "CUSTOMER") return `/dashboard/company/${pipelineId}`;
+    if (user.role === "FACILITATOR") return `/facilitator/pipeline/${pipelineId}`;
+    return `/facilitator/pipeline/${pipelineId}`;
+  }
+
+  function handleNotifClick(notif: typeof notifications[number], closeDropdown?: () => void) {
+    if (!notif.read) markRead.mutate(notif.id);
+    if (notif.pipelineId) {
+      const href = getPipelineHref(notif.pipelineId);
+      if (href) {
+        navigate(href);
+        closeDropdown?.();
+      }
+    }
+  }
 
   return (
     <DropdownMenu>
@@ -158,13 +175,22 @@ function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative hover:bg-slate-100 rounded-full w-10 h-10">
           <Bell className="w-5 h-5 text-slate-600" />
           {unreadCount > 0 && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse border-2 border-white" />
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold text-white border-2 border-white px-0.5">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
           )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80 shadow-xl rounded-xl border-slate-200">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-          <h3 className="font-semibold">Notifications</h3>
+          <h3 className="font-semibold">
+            Notifications
+            {unreadCount > 0 && (
+              <span className="ml-2 inline-flex items-center justify-center text-xs font-semibold bg-primary/10 text-primary rounded-full px-2 py-0.5">
+                {unreadCount} unread
+              </span>
+            )}
+          </h3>
           {unreadCount > 0 && (
             <Button 
               variant="ghost" 
@@ -179,7 +205,7 @@ function NotificationBell() {
             </Button>
           )}
         </div>
-        <div className="max-h-[300px] overflow-y-auto py-2">
+        <div className="max-h-[360px] overflow-y-auto py-2">
           {notifications.length === 0 ? (
             <div className="text-center py-6 text-slate-500 text-sm">
               <Bell className="w-8 h-8 mx-auto text-slate-300 mb-2" />
@@ -189,13 +215,11 @@ function NotificationBell() {
             notifications.map((notif) => (
               <div 
                 key={notif.id} 
-                className={`px-4 py-3 hover:bg-slate-50 transition-colors cursor-default ${!notif.read ? 'bg-primary/5' : ''}`}
-                onClick={() => {
-                  if (!notif.read) markRead.mutate(notif.id);
-                }}
+                className={`px-4 py-3 transition-colors ${notif.pipelineId ? 'cursor-pointer hover:bg-slate-50' : 'cursor-default hover:bg-slate-50'} ${!notif.read ? 'bg-primary/5' : ''}`}
+                onClick={() => handleNotifClick(notif)}
               >
                 <div className="flex justify-between items-start gap-2">
-                  <p className={`text-sm ${!notif.read ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
+                  <p className={`text-sm leading-snug ${!notif.read ? 'text-slate-900 font-medium' : 'text-slate-600'}`}>
                     {notif.message}
                   </p>
                   {!notif.read && <div className="w-2 h-2 rounded-full bg-primary mt-1.5 shrink-0" />}

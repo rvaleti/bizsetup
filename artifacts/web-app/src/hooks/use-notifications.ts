@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
+import { toast } from "@/hooks/use-toast";
 
 export const NotificationSchema = z.object({
   id: z.string(),
@@ -13,6 +14,16 @@ export const NotificationSchema = z.object({
 });
 
 export type Notification = z.infer<typeof NotificationSchema>;
+
+const NOTIFICATION_TYPE_TITLES: Record<string, string> = {
+  STATUS_CHANGE: "Status Updated",
+  ASSIGNED: "Pipeline Assigned",
+  COMMENT: "New Comment",
+  STEP_COMPLETE: "Step Completed",
+  REJECTED: "Pipeline Rejected",
+  RECTIFICATION: "Rectification Required",
+  SYSTEM: "System Update",
+};
 
 export function useNotifications(unreadOnly = false) {
   const queryStr = unreadOnly ? "?unreadOnly=true" : "";
@@ -60,18 +71,67 @@ export function useMarkAllNotificationsRead() {
 
 export function useNotificationsSSE() {
   const queryClient = useQueryClient();
-  
+  const retryDelayRef = useRef(1000);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const esRef = useRef<EventSource | null>(null);
+
   useEffect(() => {
-    const es = new EventSource("/api/notifications/sse", { withCredentials: true });
-    
-    es.addEventListener("notification", () => {
-      // Invalidate to refresh the bell and list
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/notifications?unreadOnly=true"] });
-    });
-    
+    let cancelled = false;
+
+    function connect() {
+      if (cancelled) return;
+
+      const es = new EventSource("/api/notifications/stream", { withCredentials: true });
+      esRef.current = es;
+
+      es.addEventListener("connected", () => {
+        retryDelayRef.current = 1000;
+      });
+
+      es.addEventListener("notification", (e) => {
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications?unreadOnly=true"] });
+
+        try {
+          const parsed = NotificationSchema.parse(JSON.parse(e.data));
+          const title = NOTIFICATION_TYPE_TITLES[parsed.type] ?? "Notification";
+          toast({
+            title,
+            description: parsed.message,
+            duration: 5000,
+          });
+        } catch {
+          toast({
+            title: "New Notification",
+            description: "You have a new update.",
+            duration: 5000,
+          });
+        }
+      });
+
+      es.onerror = () => {
+        es.close();
+        esRef.current = null;
+
+        if (!cancelled) {
+          const delay = Math.min(retryDelayRef.current, 30000);
+          retryDelayRef.current = Math.min(delay * 2, 30000);
+          reconnectTimerRef.current = setTimeout(connect, delay);
+        }
+      };
+    }
+
+    connect();
+
     return () => {
-      es.close();
+      cancelled = true;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      if (esRef.current) {
+        esRef.current.close();
+        esRef.current = null;
+      }
     };
   }, [queryClient]);
 }

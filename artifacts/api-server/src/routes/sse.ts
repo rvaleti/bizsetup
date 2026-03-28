@@ -23,7 +23,7 @@ export function broadcastNotification(userId: string, notification: object) {
   }
 }
 
-router.get("/notifications/sse", requireAuth, (req: Request, res: Response) => {
+function setupSSEConnection(req: Request, res: Response) {
   const actor = req.user as User;
   const userId = actor.id;
 
@@ -42,7 +42,7 @@ router.get("/notifications/sse", requireAuth, (req: Request, res: Response) => {
 
   const heartbeat = setInterval(() => {
     try {
-      res.write(": heartbeat\n\n");
+      res.write(": ping\n\n");
     } catch {
       clearInterval(heartbeat);
     }
@@ -58,6 +58,9 @@ router.get("/notifications/sse", requireAuth, (req: Request, res: Response) => {
       }
     }
   });
-});
+}
+
+router.get("/notifications/sse", requireAuth, setupSSEConnection);
+router.get("/notifications/stream", requireAuth, setupSSEConnection);
 
 export default router;

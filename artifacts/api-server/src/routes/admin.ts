@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { companiesTable, pipelinesTable, usersTable } from "@workspace/db/schema";
 import { eq, sql, gte, inArray, isNotNull } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
+import { safeUserFields } from "../lib/safeUser";
 
 const router: IRouter = Router();
 
@@ -77,7 +78,7 @@ router.get("/admin/stats", requireRole("ADMIN"), async (req, res) => {
 
     const facilitators =
       facilitatorIds.length > 0
-        ? await db.select().from(usersTable).where(inArray(usersTable.id, facilitatorIds))
+        ? await db.select(safeUserFields).from(usersTable).where(inArray(usersTable.id, facilitatorIds))
         : [];
 
     const facilitatorMap = new Map(facilitators.map((f) => [f.id, f]));

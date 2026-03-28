@@ -11,6 +11,7 @@ import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
+import { safeUserFields } from "../lib/safeUser";
 
 const router: IRouter = Router();
 
@@ -68,7 +69,7 @@ router.get("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
 
     const actors =
       actorIds.length > 0
-        ? await db.select().from(usersTable).where(inArray(usersTable.id, actorIds))
+        ? await db.select(safeUserFields).from(usersTable).where(inArray(usersTable.id, actorIds))
         : [];
     const actorMap = new Map(actors.map((u) => [u.id, u]));
 
@@ -159,7 +160,15 @@ router.post("/pipelines/:pipelineId/events", requireAuth, async (req, res) => {
       });
     }
 
-    res.status(201).json({ ...event, actor });
+    const safeActor = {
+      id: actor.id,
+      email: actor.email,
+      name: actor.name,
+      avatarUrl: actor.avatarUrl,
+      role: actor.role,
+      createdAt: actor.createdAt,
+    };
+    res.status(201).json({ ...event, actor: safeActor });
   } catch (err) {
     req.log.error({ err }, "Failed to post comment");
     res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to post comment" });

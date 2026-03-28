@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable, userRoleEnum } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
+import { safeUserFields, SafeUser } from "../lib/safeUser";
 
 const router: IRouter = Router();
 
@@ -13,9 +14,9 @@ router.get("/users", requireRole("ADMIN"), async (req, res) => {
   const { role } = req.query as { role?: string };
 
   try {
-    const users = role && VALID_ROLES.has(role)
-      ? await db.select().from(usersTable).where(eq(usersTable.role, role as UserRole)).orderBy(usersTable.name)
-      : await db.select().from(usersTable).orderBy(usersTable.name);
+    const users: SafeUser[] = role && VALID_ROLES.has(role)
+      ? await db.select(safeUserFields).from(usersTable).where(eq(usersTable.role, role as UserRole)).orderBy(usersTable.name)
+      : await db.select(safeUserFields).from(usersTable).orderBy(usersTable.name);
 
     res.json(users);
   } catch (err) {
@@ -37,7 +38,7 @@ router.patch("/users/:userId/role", requireRole("ADMIN"), async (req, res) => {
 
   try {
     const [user] = await db
-      .select()
+      .select({ id: usersTable.id })
       .from(usersTable)
       .where(eq(usersTable.id, userId))
       .limit(1);
@@ -51,7 +52,14 @@ router.patch("/users/:userId/role", requireRole("ADMIN"), async (req, res) => {
       .update(usersTable)
       .set({ role: newRole, updatedAt: new Date() })
       .where(eq(usersTable.id, userId))
-      .returning();
+      .returning({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        avatarUrl: usersTable.avatarUrl,
+        role: usersTable.role,
+        createdAt: usersTable.createdAt,
+      });
 
     res.json(updated);
   } catch (err) {

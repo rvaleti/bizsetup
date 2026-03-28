@@ -9,6 +9,7 @@ import {
   User,
 } from "@workspace/db/schema";
 import { eq, and, asc } from "drizzle-orm";
+import { safeUserFields, SafeUser } from "../lib/safeUser";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
@@ -48,19 +49,19 @@ async function getPipelineDetail(pipelineId: string) {
     .where(eq(pipelineStepsTable.pipelineId, pipelineId))
     .orderBy(asc(pipelineStepsTable.order));
 
-  const events = await db
+  const eventRows = await db
     .select({
       event: pipelineEventsTable,
-      actor: usersTable,
+      actor: safeUserFields,
     })
     .from(pipelineEventsTable)
     .leftJoin(usersTable, eq(pipelineEventsTable.actorId, usersTable.id))
     .where(eq(pipelineEventsTable.pipelineId, pipelineId))
     .orderBy(asc(pipelineEventsTable.createdAt));
 
-  const eventsWithActors = events.map(({ event, actor }) => ({
+  const eventsWithActors = eventRows.map(({ event, actor }) => ({
     ...event,
-    actor: actor ?? null,
+    actor: actor?.id ? actor : null,
   }));
 
   const [company] = await db
@@ -69,16 +70,20 @@ async function getPipelineDetail(pipelineId: string) {
     .where(eq(companiesTable.id, pipeline.companyId))
     .limit(1);
 
-  const [customer] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, company?.customerId ?? ""))
-    .limit(1);
+  let customer: SafeUser | null = null;
+  if (company?.customerId) {
+    const [c] = await db
+      .select(safeUserFields)
+      .from(usersTable)
+      .where(eq(usersTable.id, company.customerId))
+      .limit(1);
+    customer = c ?? null;
+  }
 
-  let facilitator = null;
+  let facilitator: SafeUser | null = null;
   if (pipeline.assignedFacilitatorId) {
     const [f] = await db
-      .select()
+      .select(safeUserFields)
       .from(usersTable)
       .where(eq(usersTable.id, pipeline.assignedFacilitatorId))
       .limit(1);
@@ -91,7 +96,7 @@ async function getPipelineDetail(pipelineId: string) {
     steps,
     events: eventsWithActors,
     company: company ?? null,
-    customer: customer ?? null,
+    customer,
   };
 }
 
@@ -330,7 +335,7 @@ router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
     }
 
     const [facilitator] = await db
-      .select()
+      .select(safeUserFields)
       .from(usersTable)
       .where(and(eq(usersTable.id, facilitatorId), eq(usersTable.role, "FACILITATOR")))
       .limit(1);

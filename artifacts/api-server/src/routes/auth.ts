@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { randomBytes } from "crypto";
 import passport from "../lib/auth";
 import { requireAuth } from "../middlewares/requireAuth";
 
@@ -6,13 +7,36 @@ const router: IRouter = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "/";
 
-router.get("/auth/google", passport.authenticate("google", {
-  scope: ["profile", "email"],
-}));
+router.get("/auth/google", (req, res, next) => {
+  const state = randomBytes(16).toString("hex");
+  req.session.oauthState = state;
+  req.session.save((err) => {
+    if (err) {
+      req.log.error({ err }, "Failed to save OAuth state to session");
+      res.redirect(`${FRONTEND_URL}?auth_error=1`);
+      return;
+    }
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+      state,
+    })(req, res, next);
+  });
+});
 
 router.get(
   "/auth/google/callback",
   (req, res, next) => {
+    const stateParam = req.query.state as string | undefined;
+    const savedState = req.session.oauthState as string | undefined;
+
+    if (!stateParam || !savedState || stateParam !== savedState) {
+      req.log.warn({ stateParam, hasSaved: !!savedState }, "OAuth CSRF state mismatch");
+      res.redirect(`${FRONTEND_URL}?auth_error=1`);
+      return;
+    }
+
+    delete req.session.oauthState;
+
     passport.authenticate(
       "google",
       { session: false },

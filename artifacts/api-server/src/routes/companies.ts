@@ -35,18 +35,8 @@ router.get("/companies", requireAuth, async (req, res) => {
 
     if (actor.role === "CUSTOMER") {
       companyConditions.push(eq(companiesTable.customerId, actor.id));
-    } else if (actor.role === "FACILITATOR") {
-      const assignedCompanyIds = await db
-        .select({ companyId: pipelinesTable.companyId })
-        .from(pipelinesTable)
-        .where(eq(pipelinesTable.assignedFacilitatorId, actor.id));
-      const ids = assignedCompanyIds.map((r) => r.companyId);
-      if (ids.length === 0) {
-        res.json({ data: [], total: 0, page: pageNum, pageSize: pageSizeNum, totalPages: 0 });
-        return;
-      }
-      companyConditions.push(inArray(companiesTable.id, ids));
     }
+    // FACILITATOR and ADMIN see all companies (per API contract)
 
     if (search) {
       companyConditions.push(ilike(companiesTable.name, `%${search}%`));
@@ -262,27 +252,10 @@ router.get("/companies/:companyId", requireAuth, async (req, res) => {
       return;
     }
 
+    // Customers can only see their own companies; FACILITATOR and ADMIN can see all (per API contract)
     if (actor.role === "CUSTOMER" && company.customerId !== actor.id) {
       res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
       return;
-    }
-
-    if (actor.role === "FACILITATOR") {
-      const [assigned] = await db
-        .select({ id: pipelinesTable.id })
-        .from(pipelinesTable)
-        .where(
-          and(
-            eq(pipelinesTable.companyId, companyId),
-            eq(pipelinesTable.assignedFacilitatorId, actor.id)
-          )
-        )
-        .limit(1);
-
-      if (!assigned) {
-        res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
-        return;
-      }
     }
 
     const [pipeline] = await db

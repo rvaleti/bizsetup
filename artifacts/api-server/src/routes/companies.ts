@@ -35,8 +35,19 @@ router.get("/companies", requireAuth, async (req, res) => {
 
     if (actor.role === "CUSTOMER") {
       companyConditions.push(eq(companiesTable.customerId, actor.id));
+    } else if (actor.role === "FACILITATOR") {
+      const assignedCompanyIds = await db
+        .select({ companyId: pipelinesTable.companyId })
+        .from(pipelinesTable)
+        .where(eq(pipelinesTable.assignedFacilitatorId, actor.id));
+      const ids = assignedCompanyIds.map((r) => r.companyId);
+      if (ids.length === 0) {
+        res.json({ data: [], total: 0, page: pageNum, pageSize: pageSizeNum, totalPages: 0 });
+        return;
+      }
+      companyConditions.push(inArray(companiesTable.id, ids));
     }
-    // FACILITATOR and ADMIN see all companies (per API contract)
+    // ADMIN sees all companies
 
     if (search) {
       companyConditions.push(ilike(companiesTable.name, `%${search}%`));

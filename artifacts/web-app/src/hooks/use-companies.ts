@@ -50,8 +50,11 @@ const ListResponseSchema = z.object({
   totalPages: z.number(),
 });
 
-export function useCompanies(params?: { status?: string; entityType?: string; search?: string }) {
-  const queryStr = new URLSearchParams(params as Record<string, string>).toString();
+export function useCompanies(params?: { status?: string; entityType?: string; search?: string; pageSize?: string }) {
+  const cleanParams = Object.fromEntries(
+    Object.entries(params ?? {}).filter(([, v]) => v !== undefined && v !== "")
+  );
+  const queryStr = new URLSearchParams(cleanParams as Record<string, string>).toString();
   const url = `/api/companies${queryStr ? `?${queryStr}` : ""}`;
   
   return useQuery({

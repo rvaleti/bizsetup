@@ -6,38 +6,39 @@ const router: IRouter = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "/";
 
-router.get("/auth/google", (req, res, next) => {
-  const state = Buffer.from(Math.random().toString(36)).toString("base64");
-  req.session.oauthState = state;
-  req.session.save(() => {
-    passport.authenticate("google", {
-      scope: ["profile", "email"],
-      state,
-    })(req, res, next);
-  });
-});
+router.get("/auth/google", passport.authenticate("google", {
+  scope: ["profile", "email"],
+}));
 
 router.get(
   "/auth/google/callback",
-  passport.authenticate("google", {
-    failureRedirect: `${FRONTEND_URL}?auth_error=1`,
-    session: false,
-  }),
-  (req, res) => {
-    if (!req.user) {
-      res.redirect(`${FRONTEND_URL}?auth_error=1`);
-      return;
-    }
-    const user = req.user as { id: string };
-    req.session.userId = user.id;
-    req.session.save((err) => {
-      if (err) {
-        req.log.error({ err }, "Failed to save session after OAuth callback");
-        res.redirect(`${FRONTEND_URL}?auth_error=1`);
-        return;
+  (req, res, next) => {
+    passport.authenticate(
+      "google",
+      { session: false },
+      (err: Error | null, user: { id: string } | false) => {
+        if (err) {
+          req.log.error({ err }, "OAuth callback passport error");
+          res.redirect(`${FRONTEND_URL}?auth_error=1`);
+          return;
+        }
+        if (!user) {
+          req.log.warn("OAuth callback: no user returned");
+          res.redirect(`${FRONTEND_URL}?auth_error=1`);
+          return;
+        }
+        req.session.userId = user.id;
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            req.log.error({ err: saveErr }, "Failed to save session after OAuth callback");
+            res.redirect(`${FRONTEND_URL}?auth_error=1`);
+            return;
+          }
+          req.log.info({ userId: user.id, sid: req.sessionID }, "OAuth login success, session saved");
+          res.redirect(FRONTEND_URL);
+        });
       }
-      res.redirect(FRONTEND_URL);
-    });
+    )(req, res, next);
   }
 );
 

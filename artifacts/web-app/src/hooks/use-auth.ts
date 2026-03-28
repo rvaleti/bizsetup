@@ -28,11 +28,11 @@ export function useLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/auth/logout", { method: "POST" });
+      const res = await fetch("/api/auth/logout", { method: "GET" });
       if (!res.ok) throw new Error("Failed to logout");
     },
     onSuccess: () => {
-      queryClient.setQueryData(["/api/auth/me"], null);
+      queryClient.clear();
       window.location.href = "/";
     }
   });

@@ -1,96 +1,183 @@
-# Workspace
+# BizSetup — MSME/SME Company Registration Platform
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+A comprehensive platform for automating Indian MSME/SME company registration. Three user roles: **Customer** (registers companies), **Facilitator** (executes government registration steps), **Admin** (manages the platform).
+
+## Architecture
+
+pnpm monorepo (TypeScript) with:
+- `artifacts/api-server` — Express 5 REST API + SSE notifications
+- `artifacts/web-app` — React 19 + Vite 7 + TailwindCSS 4 SPA
+- `lib/db` — Drizzle ORM + PostgreSQL schema
+- `scripts` — utility scripts (seed-admin, etc.)
 
 ## Stack
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+| Layer | Technology |
+|-------|-----------|
+| Monorepo | pnpm workspaces |
+| Node.js | 24 |
+| Language | TypeScript 5.9 |
+| API | Express 5 |
+| Database | PostgreSQL + Drizzle ORM |
+| Auth | Passport.js + Google OAuth 2.0 + express-session |
+| Sessions | connect-pg-simple (PostgreSQL-backed) |
+| Frontend | React 19 + Vite 7 |
+| Styling | TailwindCSS 4 + shadcn/ui |
+| Routing | Wouter |
+| State | TanStack Query |
+| Charts | Recharts |
+| Real-time | Server-Sent Events (SSE) |
+
+## Key Features
+
+- **Google OAuth login** — Passport strategy, session-based auth (`req.session.userId`)
+- **Company registration** — 6 entity types (Sole Proprietorship, Partnership, LLP, Private Limited, OPC, Public Limited, Section 8)
+- **10-step Indian government registration pipeline** — MCA Name Reservation, DIN, DSC, GST, MSME Udyam, Shop Act, FSSAI, PF/ESI, IEC, Professional Tax
+- **Pipeline state machine** — NEW→ASSIGNED→IN_PROGRESS→WAITING→COMPLETED/REJECTED/RECTIFICATION
+- **Facilitator portal** — execution stepper with step status management per pipeline
+- **Admin dashboard** — Recharts charts (pipeline status donut, entity type bar, facilitator workload)
+- **Chatter system** — per-pipeline activity feed with comments and system events
+- **SSE notifications** — real-time bell notifications broadcast to connected users
 
 ## Structure
 
 ```text
-artifacts-monorepo/
-├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
-├── lib/                    # Shared libraries
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts (single workspace package)
-│   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
-├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
-├── tsconfig.base.json      # Shared TS options (composite, bundler resolution, es2022)
-├── tsconfig.json           # Root TS project references
-└── package.json            # Root package with hoisted devDeps
+/
+├── artifacts/
+│   ├── api-server/          # Express API (port 8080, routed at /api)
+│   │   ├── src/
+│   │   │   ├── app.ts       # Express setup, session, passport, CORS
+│   │   │   ├── index.ts     # Server entry, PORT binding
+│   │   │   ├── lib/
+│   │   │   │   ├── auth.ts          # Passport Google strategy
+│   │   │   │   ├── notifications.ts # createNotification + broadcast helper
+│   │   │   │   ├── pipelineSteps.ts # 10 canonical Indian govt steps
+│   │   │   │   └── logger.ts        # pino logger
+│   │   │   ├── middlewares/
+│   │   │   │   └── requireAuth.ts   # Session-based auth + requireRole()
+│   │   │   ├── routes/
+│   │   │   │   ├── auth.ts      # Google OAuth routes + /auth/me + /auth/logout
+│   │   │   │   ├── companies.ts # CRUD companies + pagination
+│   │   │   │   ├── pipelines.ts # Pipeline CRUD + status machine + step updates
+│   │   │   │   ├── events.ts    # Pipeline events (comments + system events)
+│   │   │   │   ├── notifications.ts # Notification list + mark read
+│   │   │   │   ├── users.ts     # User list + role update (ADMIN only)
+│   │   │   │   ├── admin.ts     # Admin stats aggregation
+│   │   │   │   └── sse.ts       # SSE endpoint for real-time notifications
+│   │   │   └── types/
+│   │   │       └── express.d.ts # Session augmentation (userId, oauthState)
+│   │   └── build.mjs        # esbuild config (connect-pg-simple externalized)
+│   └── web-app/             # React SPA (Vite, port from $PORT env)
+│       └── src/
+│           ├── App.tsx          # Router (wouter) + role-based ProtectedRoute
+│           ├── components/
+│           │   ├── layout.tsx   # AppLayout sidebar + NotificationBell
+│           │   ├── chatter.tsx  # Pipeline chatter feed + comment form
+│           │   └── status-badge.tsx
+│           ├── hooks/
+│           │   ├── use-auth.ts          # useAuth, useLogout
+│           │   ├── use-companies.ts     # useCompanies, useCreateCompany
+│           │   ├── use-pipelines.ts     # usePipeline, useUpdatePipelineStatus, useUpdatePipelineStep
+│           │   ├── use-events.ts        # usePipelineEvents, usePostComment
+│           │   ├── use-notifications.ts # useNotifications, useNotificationsSSE, useMarkNotificationRead
+│           │   ├── use-users.ts         # useUsers, useUpdateUserRole
+│           │   └── use-admin.ts         # useAdminStats
+│           └── pages/
+│               ├── login.tsx
+│               ├── customer/
+│               │   ├── dashboard.tsx      # Company list + Register New Company dialog
+│               │   └── company-detail.tsx # Company + pipeline detail, step progress
+│               ├── facilitator/
+│               │   ├── dashboard.tsx      # Assigned pipelines list
+│               │   └── pipeline-detail.tsx # Step execution stepper + Chatter
+│               └── admin/
+│                   ├── dashboard.tsx  # Recharts: pipeline status donut, entity bar, workload
+│                   ├── companies.tsx  # Company management table with search + assign facilitator
+│                   └── users.tsx      # User table with role management
+├── lib/
+│   └── db/
+│       └── src/
+│           ├── index.ts     # pool + db export
+│           └── schema/      # users, companies, pipelines, pipeline_steps,
+│                            # pipeline_events, notifications tables
+└── scripts/
+    └── src/
+        └── seed-admin.ts    # Promote a Google-authenticated user to ADMIN
 ```
 
-## TypeScript & Composite Projects
+## Database Schema
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+| Table | Purpose |
+|-------|---------|
+| `users` | Google OAuth users with role (CUSTOMER/FACILITATOR/ADMIN) |
+| `companies` | Registered company profiles |
+| `pipelines` | Registration pipeline per company (status, assigned facilitator) |
+| `pipeline_steps` | Per-pipeline individual step records (10 steps, PENDING/IN_PROGRESS/COMPLETED/SKIPPED) |
+| `pipeline_events` | Chatter feed — COMMENT, STATUS_CHANGE, STEP_COMPLETE, ASSIGNED events |
+| `notifications` | User notifications (read/unread) |
+| `session` | express-session store (connect-pg-simple, created manually) |
 
-- **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+## Environment Variables
 
-## Root Scripts
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | PostgreSQL connection string (auto-provided by Replit) |
+| `SESSION_SECRET` | Express session signing secret |
+| `GOOGLE_CLIENT_ID` | Google OAuth app client ID |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth app client secret |
+| `REPLIT_DEV_DOMAIN` | Auto-set; used to construct the OAuth callback URL |
+| `PORT` | Auto-set per artifact by Replit proxy |
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
+## OAuth Callback URL
 
-## Packages
+When setting up Google OAuth, add this as an authorized redirect URI:
+```
+https://<REPLIT_DEV_DOMAIN>/api/auth/google/callback
+```
 
-### `artifacts/api-server` (`@workspace/api-server`)
+For production, add:
+```
+https://<your-replit-app-domain>/api/auth/google/callback
+```
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+## Common Commands
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
-- App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+```bash
+# Run dev servers (via Replit workflows)
+pnpm --filter @workspace/api-server run dev
+pnpm --filter @workspace/web-app run dev
 
-### `lib/db` (`@workspace/db`)
+# Database
+pnpm --filter @workspace/db run push        # Sync schema
+pnpm --filter @workspace/db run studio      # Drizzle Studio GUI
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
+# Typecheck
+pnpm run typecheck                          # Whole workspace
+pnpm --filter @workspace/api-server exec tsc --noEmit
+pnpm --filter @workspace/web-app exec tsc --noEmit
 
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
-- `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
+# Promote user to Admin (user must have logged in first)
+pnpm --filter @workspace/scripts run seed-admin <email>
+```
 
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+## Session Notes
 
-### `lib/api-spec` (`@workspace/api-spec`)
+- Sessions use `connect-pg-simple` (PostgreSQL-backed). The `session` table must exist (created manually; `createTableIfMissing: true` fails when bundled with esbuild).
+- `connect-pg-simple` is **externalized** in `artifacts/api-server/build.mjs` to avoid the `table.sql` path resolution issue inside esbuild bundles.
+- Auth flow: Google OAuth → passport strategy creates/finds user → `req.session.userId = user.id` → `req.session.save()` → redirect to frontend.
 
-Owns the OpenAPI 3.1 spec (`openapi.yaml`) and the Orval config (`orval.config.ts`). Running codegen produces output into two sibling packages:
+## Pipeline State Machine
 
-1. `lib/api-client-react/src/generated/` — React Query hooks + fetch client
-2. `lib/api-zod/src/generated/` — Zod schemas
-
-Run codegen: `pnpm --filter @workspace/api-spec run codegen`
-
-### `lib/api-zod` (`@workspace/api-zod`)
-
-Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used by `api-server` for response validation.
-
-### `lib/api-client-react` (`@workspace/api-client-react`)
-
-Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
-
-### `scripts` (`@workspace/scripts`)
-
-Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
+```
+NEW → ASSIGNED (admin assigns facilitator)
+ASSIGNED → IN_PROGRESS (facilitator starts work)
+IN_PROGRESS → WAITING (awaiting govt processing)
+IN_PROGRESS → COMPLETED (all steps done)
+WAITING → IN_PROGRESS (resumed)
+WAITING → COMPLETED
+Any state → REJECTED (admin only)
+Any state → RECTIFICATION (corrections needed)
+RECTIFICATION → IN_PROGRESS (work resumed)
+```

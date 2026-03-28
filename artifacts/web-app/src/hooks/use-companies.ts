@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { UserSchema } from "./use-auth";
+import type { User } from "./use-auth";
 
 export const EntityTypeEnum = z.enum(["LLP", "PRIVATE_LIMITED", "OPC", "PARTNERSHIP", "SOLE_PROPRIETORSHIP", "SECTION_8", "PUBLIC_LIMITED"]);
 
@@ -8,6 +9,7 @@ export const PipelineSchema = z.object({
   id: z.string(),
   companyId: z.string(),
   assignedFacilitatorId: z.string().nullable().optional(),
+  assignedFacilitator: UserSchema.nullable().optional(),
   status: z.string(),
   currentStep: z.string().nullable().optional(),
   rejectionReason: z.string().nullable().optional(),

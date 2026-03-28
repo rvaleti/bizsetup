@@ -4,6 +4,8 @@
 
 A comprehensive platform for automating Indian MSME/SME company registration. Three user roles: **Customer** (registers companies), **Facilitator** (executes government registration steps), **Admin** (manages the platform).
 
+**Status: MVP complete.** All 8 tasks shipped — auth, company registration, 10-step pipeline, facilitator portal, admin dashboard with Recharts charts, SSE real-time notifications, chatter system.
+
 ## Architecture
 
 pnpm monorepo (TypeScript) with:

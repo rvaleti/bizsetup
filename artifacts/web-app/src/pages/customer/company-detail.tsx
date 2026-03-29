@@ -19,9 +19,9 @@ export default function CustomerCompanyDetail() {
   
   const { data: user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  const { data: company, isLoading: companyLoading } = useCompany(companyId);
+  const { data: company, isLoading: companyLoading, error: companyError } = useCompany(companyId);
   const pipelineId = company?.pipeline?.id || "";
-  const { data: pipeline, isLoading: pipelineLoading } = usePipeline(pipelineId);
+  const { data: pipeline, isLoading: pipelineLoading, error: pipelineError } = usePipeline(pipelineId);
   const { data: facilitators } = useUsers("FACILITATOR", isAdmin);
   const assignFacilitator = useAssignFacilitator();
   const { toast } = useToast();
@@ -39,7 +39,8 @@ export default function CustomerCompanyDetail() {
   };
 
   if (companyLoading) return <div className="space-y-6"><Skeleton className="h-40 w-full rounded-2xl" /><div className="flex gap-6"><Skeleton className="h-[500px] flex-1 rounded-2xl" /><Skeleton className="h-[500px] w-96 rounded-2xl" /></div></div>;
-  if (!company) return <div>Company not found</div>;
+  if (companyError) return <div className="text-center py-12"><h2 className="text-red-600 font-bold mb-2">Error loading company</h2><p className="text-slate-500">{companyError instanceof Error ? companyError.message : "An error occurred"}</p></div>;
+  if (!company) return <div className="text-center py-12"><h2 className="text-slate-600 font-bold mb-2">Company not found</h2><p className="text-slate-500">This company doesn't exist or you don't have access to it.</p></div>;
 
   return (
     <div className="space-y-6 animate-fade-in pb-10">
@@ -118,9 +119,13 @@ export default function CustomerCompanyDetail() {
           <div className="p-6 overflow-y-auto flex-1 bg-slate-50/30">
             {pipelineLoading ? (
               <div className="space-y-8">{[1,2,3,4].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
-            ) : pipeline?.steps ? (
+            ) : pipeline?.steps && pipeline.steps.length > 0 ? (
               <PipelineStepper steps={pipeline.steps} />
-            ) : null}
+            ) : !pipelineId ? (
+              <div className="text-center text-slate-500 py-8">Pipeline not yet created</div>
+            ) : (
+              <div className="text-center text-slate-500 py-8">No steps available</div>
+            )}
           </div>
         </div>
 

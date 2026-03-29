@@ -33,5 +33,3 @@ channel = "stable-25_05"
 
 [userenv.shared]
 VITE_GOOGLE_CLIENT_ID = "770808856993-hcarvpqm786rhoq03hasjs4ehshq6830.apps.googleusercontent.com"
-CALLBACK_BASE_URL = "https://bizsetup.bizmesh.com"
-FRONTEND_URL = "https://bizsetup.bizmesh.com/"

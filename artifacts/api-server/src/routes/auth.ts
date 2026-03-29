@@ -49,7 +49,9 @@ router.get("/callback", async (req, res) => {
 
     const protocol = req.headers["x-forwarded-proto"] ?? req.protocol;
     const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-    const currentUrl = new URL(`${protocol}://${host}${req.url}`);
+    const currentUrl = new URL(`${protocol}://${host}${req.originalUrl}`);
+    
+    req.log.info({ originalUrl: req.originalUrl, protocol, host, fullUrl: currentUrl.href }, "OIDC callback URL constructed");
 
     const tokens = await handleCallback(currentUrl, codeVerifier, expectedState, expectedNonce);
     const claims = tokens.claims();

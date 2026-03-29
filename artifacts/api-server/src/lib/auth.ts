@@ -1,5 +1,4 @@
-import passport from "passport";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { discovery, buildAuthorizationUrl, authorizationCodeGrant, randomPKCECodeVerifier, calculatePKCECodeChallenge, randomState, randomNonce } from "openid-client";
 import { db } from "@workspace/db";
 import { usersTable } from "@workspace/db/schema";
 import { eq, and } from "drizzle-orm";
@@ -13,61 +12,89 @@ if (!process.env.GOOGLE_CLIENT_SECRET) {
   throw new Error("GOOGLE_CLIENT_SECRET environment variable is required");
 }
 
-const callbackURL = process.env.REPLIT_DEV_DOMAIN
-  ? `https://${process.env.REPLIT_DEV_DOMAIN}/api/auth/google/callback`
-  : `${process.env.CALLBACK_BASE_URL ?? ""}/api/auth/google/callback`;
+const GOOGLE_ISSUER = new URL("https://accounts.google.com");
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL,
-      scope: ["profile", "email"],
-    },
-    async (_accessToken, _refreshToken, profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) {
-          return done(new Error("No email returned from Google"), undefined);
-        }
+let _config: Awaited<ReturnType<typeof discovery>> | null = null;
 
-        const [existing] = await db
-          .select()
-          .from(usersTable)
-          .where(
-            and(
-              eq(usersTable.oauthProvider, "google"),
-              eq(usersTable.oauthId, profile.id)
-            )
-          )
-          .limit(1);
+export async function getOidcConfig() {
+  if (!_config) {
+    _config = await discovery(GOOGLE_ISSUER, process.env.GOOGLE_CLIENT_ID!, process.env.GOOGLE_CLIENT_SECRET!);
+  }
+  return _config;
+}
 
-        if (existing) {
-          return done(null, existing);
-        }
+export function getCallbackURL(): string {
+  if (process.env.REPLIT_DEV_DOMAIN) {
+    return `https://${process.env.REPLIT_DEV_DOMAIN}/api/callback`;
+  }
+  return `${process.env.CALLBACK_BASE_URL ?? ""}/api/callback`;
+}
 
-        const [created] = await db
-          .insert(usersTable)
-          .values({
-            id: randomUUID(),
-            oauthProvider: "google",
-            oauthId: profile.id,
-            email,
-            name: profile.displayName ?? email,
-            avatarUrl: profile.photos?.[0]?.value ?? null,
-            role: "CUSTOMER",
-          })
-          .returning();
+export async function buildLoginUrl(codeVerifier: string, state: string, nonce: string): Promise<URL> {
+  const config = await getOidcConfig();
+  const codeChallenge = await calculatePKCECodeChallenge(codeVerifier);
+  return buildAuthorizationUrl(config, {
+    redirect_uri: getCallbackURL(),
+    scope: "openid profile email",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state,
+    nonce,
+  });
+}
 
-        logger.info({ userId: created.id, email }, "New user created via Google OAuth");
-        return done(null, created);
-      } catch (err) {
-        logger.error({ err }, "Error in Google OAuth strategy");
-        return done(err as Error, undefined);
-      }
-    }
-  )
-);
+export async function handleCallback(currentUrl: URL, codeVerifier: string, expectedState: string, expectedNonce: string) {
+  const config = await getOidcConfig();
+  const tokens = await authorizationCodeGrant(config, currentUrl, {
+    pkceCodeVerifier: codeVerifier,
+    expectedState,
+    expectedNonce,
+  });
+  return tokens;
+}
 
-export default passport;
+export async function upsertUser(claims: {
+  sub: string;
+  email?: string;
+  name?: string;
+  given_name?: string;
+  picture?: string;
+}) {
+  const email = claims.email;
+  if (!email) {
+    throw new Error("No email returned from Google");
+  }
+
+  const [existing] = await db
+    .select()
+    .from(usersTable)
+    .where(
+      and(
+        eq(usersTable.oauthProvider, "google"),
+        eq(usersTable.oauthId, claims.sub)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    return existing;
+  }
+
+  const [created] = await db
+    .insert(usersTable)
+    .values({
+      id: randomUUID(),
+      oauthProvider: "google",
+      oauthId: claims.sub,
+      email,
+      name: claims.name ?? claims.given_name ?? email,
+      avatarUrl: claims.picture ?? null,
+      role: "CUSTOMER",
+    })
+    .returning();
+
+  logger.info({ userId: created.id, email }, "New user created via Google OIDC");
+  return created;
+}
+
+export { randomPKCECodeVerifier, randomState, randomNonce };

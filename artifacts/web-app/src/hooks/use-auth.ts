@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 
 export const UserSchema = z.object({
@@ -26,14 +26,11 @@ export function useAuth() {
 
 export function useLogout() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/auth/logout", { method: "GET" });
-      if (!res.ok) throw new Error("Failed to logout");
-    },
-    onSuccess: () => {
+  return {
+    mutate: () => {
       queryClient.clear();
-      window.location.href = "/";
-    }
-  });
+      window.location.href = "/api/auth/logout";
+    },
+    isPending: false,
+  };
 }

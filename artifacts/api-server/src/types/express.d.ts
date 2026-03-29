@@ -1,13 +1,19 @@
+import type { User } from "@workspace/db/schema";
+
 declare global {
   namespace Express {
-    interface User extends import("@workspace/db/schema").User {}
+    interface Request {
+      user?: User;
+    }
   }
 }
 
 declare module "express-session" {
   interface SessionData {
     userId?: string;
-    oauthState?: string;
+    oidcCodeVerifier?: string;
+    oidcState?: string;
+    oidcNonce?: string;
   }
 }
 

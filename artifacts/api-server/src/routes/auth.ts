@@ -1,73 +1,88 @@
 import { Router, type IRouter } from "express";
-import { randomBytes, randomUUID } from "crypto";
-import passport from "../lib/auth";
 import { requireAuth } from "../middlewares/requireAuth";
-import { db } from "@workspace/db";
-import { usersTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { buildLoginUrl, handleCallback, upsertUser, randomPKCECodeVerifier, randomState, randomNonce } from "../lib/auth";
 
 const router: IRouter = Router();
 
 const FRONTEND_URL = process.env.FRONTEND_URL ?? "/";
 
-router.get("/auth/google", (req, res, next) => {
-  const state = randomBytes(16).toString("hex");
-  req.session.oauthState = state;
-  req.session.save((err) => {
-    if (err) {
-      req.log.error({ err }, "Failed to save OAuth state to session");
-      res.redirect(`${FRONTEND_URL}?auth_error=1`);
-      return;
-    }
-    passport.authenticate("google", {
-      scope: ["profile", "email"],
-      state,
-    })(req, res, next);
-  });
+router.get("/login", async (req, res) => {
+  try {
+    const codeVerifier = randomPKCECodeVerifier();
+    const state = randomState();
+    const nonce = randomNonce();
+
+    req.session.oidcCodeVerifier = codeVerifier;
+    req.session.oidcState = state;
+    req.session.oidcNonce = nonce;
+
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    const authUrl = await buildLoginUrl(codeVerifier, state, nonce);
+    res.redirect(authUrl.href);
+  } catch (err) {
+    req.log.error({ err }, "Failed to initiate OIDC login");
+    res.redirect(`${FRONTEND_URL}?auth_error=1`);
+  }
 });
 
-router.get(
-  "/auth/google/callback",
-  (req, res, next) => {
-    const stateParam = req.query.state as string | undefined;
-    const savedState = req.session.oauthState as string | undefined;
+router.get("/callback", async (req, res) => {
+  try {
+    const codeVerifier = req.session.oidcCodeVerifier as string | undefined;
+    const expectedState = req.session.oidcState as string | undefined;
+    const expectedNonce = req.session.oidcNonce as string | undefined;
 
-    if (!stateParam || !savedState || stateParam !== savedState) {
-      req.log.warn({ stateParam, hasSaved: !!savedState }, "OAuth CSRF state mismatch");
+    if (!codeVerifier || !expectedState || !expectedNonce) {
+      req.log.warn("OIDC callback: missing session PKCE/state/nonce");
       res.redirect(`${FRONTEND_URL}?auth_error=1`);
       return;
     }
 
-    delete req.session.oauthState;
+    delete req.session.oidcCodeVerifier;
+    delete req.session.oidcState;
+    delete req.session.oidcNonce;
 
-    passport.authenticate(
-      "google",
-      { session: false },
-      (err: Error | null, user: { id: string } | false) => {
-        if (err) {
-          req.log.error({ err }, "OAuth callback passport error");
-          res.redirect(`${FRONTEND_URL}?auth_error=1`);
-          return;
-        }
-        if (!user) {
-          req.log.warn("OAuth callback: no user returned");
-          res.redirect(`${FRONTEND_URL}?auth_error=1`);
-          return;
-        }
-        req.session.userId = user.id;
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            req.log.error({ err: saveErr }, "Failed to save session after OAuth callback");
-            res.redirect(`${FRONTEND_URL}?auth_error=1`);
-            return;
-          }
-          req.log.info({ userId: user.id, sid: req.sessionID }, "OAuth login success, session saved");
-          res.redirect(FRONTEND_URL);
-        });
-      }
-    )(req, res, next);
+    const protocol = req.headers["x-forwarded-proto"] ?? req.protocol;
+    const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+    const currentUrl = new URL(`${protocol}://${host}${req.url}`);
+
+    const tokens = await handleCallback(currentUrl, codeVerifier, expectedState, expectedNonce);
+    const claims = tokens.claims();
+
+    if (!claims) {
+      req.log.error("OIDC callback: no ID token claims");
+      res.redirect(`${FRONTEND_URL}?auth_error=1`);
+      return;
+    }
+
+    const user = await upsertUser({
+      sub: claims.sub,
+      email: claims.email as string | undefined,
+      name: claims.name as string | undefined,
+      given_name: claims.given_name as string | undefined,
+      picture: claims.picture as string | undefined,
+    });
+
+    req.session.userId = user.id;
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    req.log.info({ userId: user.id, sid: req.sessionID }, "OIDC login success, session saved");
+    res.redirect(FRONTEND_URL);
+  } catch (err) {
+    req.log.error({ err }, "OIDC callback error");
+    res.redirect(`${FRONTEND_URL}?auth_error=1`);
   }
-);
+});
 
 router.get("/auth/me", requireAuth, (req, res) => {
   const user = req.user as {
@@ -88,94 +103,7 @@ router.get("/auth/me", requireAuth, (req, res) => {
   });
 });
 
-router.post("/auth/google/token", async (req, res) => {
-  const { token } = req.body as { token?: string };
-
-  if (!token) {
-    res.status(400).json({ error: "VALIDATION_ERROR", message: "Token is required" });
-    return;
-  }
-
-  try {
-    // Verify token with Google's tokeninfo endpoint
-    const response = await fetch("https://www.googleapis.com/oauth2/v1/tokeninfo", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `id_token=${token}`,
-    });
-
-    if (!response.ok) {
-      req.log.warn("Invalid token received");
-      res.status(401).json({ error: "UNAUTHORIZED", message: "Invalid token" });
-      return;
-    }
-
-    const tokenData = (await response.json()) as {
-      sub: string;
-      email: string;
-      name?: string;
-      picture?: string;
-    };
-
-    // Find or create user
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(eq(usersTable.oauthId, tokenData.sub))
-      .limit(1);
-
-    if (!user) {
-      // Create new user
-      const newUsers = await db
-        .insert(usersTable)
-        .values({
-          id: randomUUID(),
-          email: tokenData.email,
-          name: tokenData.name || tokenData.email.split("@")[0],
-          avatarUrl: tokenData.picture || null,
-          role: "CUSTOMER",
-          oauthProvider: "google",
-          oauthId: tokenData.sub,
-        })
-        .returning();
-      
-      const newUser = newUsers[0];
-
-      if (!newUser) {
-        throw new Error("Failed to create user");
-      }
-
-      // Set session and redirect
-      req.session.userId = newUser.id;
-      req.session.save((err) => {
-        if (err) {
-          req.log.error({ err }, "Failed to save session");
-          res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to create session" });
-          return;
-        }
-        req.log.info({ userId: newUser.id }, "New user created via Google Sign-In");
-        res.json({ success: true });
-      });
-    } else {
-      // Existing user
-      req.session.userId = user.id;
-      req.session.save((err) => {
-        if (err) {
-          req.log.error({ err }, "Failed to save session");
-          res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to create session" });
-          return;
-        }
-        req.log.info({ userId: user.id }, "User authenticated via Google Sign-In");
-        res.json({ success: true });
-      });
-    }
-  } catch (err) {
-    req.log.error({ err }, "Google Sign-In token verification failed");
-    res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to verify token" });
-  }
-});
-
-router.get("/auth/logout", requireAuth, (req, res) => {
+router.get("/auth/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) {
       req.log.error({ err }, "Error destroying session on logout");
@@ -183,7 +111,7 @@ router.get("/auth/logout", requireAuth, (req, res) => {
       return;
     }
     res.clearCookie("connect.sid");
-    res.json({ message: "Logged out successfully" });
+    res.redirect(FRONTEND_URL);
   });
 });
 

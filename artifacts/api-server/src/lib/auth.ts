@@ -24,10 +24,13 @@ export async function getOidcConfig() {
 }
 
 export function getCallbackURL(): string {
+  if (process.env.CALLBACK_BASE_URL) {
+    return `${process.env.CALLBACK_BASE_URL}/api/callback`;
+  }
   if (process.env.REPLIT_DEV_DOMAIN) {
     return `https://${process.env.REPLIT_DEV_DOMAIN}/api/callback`;
   }
-  return `${process.env.CALLBACK_BASE_URL ?? ""}/api/callback`;
+  throw new Error("Either CALLBACK_BASE_URL or REPLIT_DEV_DOMAIN must be set");
 }
 
 export async function buildLoginUrl(codeVerifier: string, state: string, nonce: string): Promise<URL> {

@@ -12,6 +12,8 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "REJECTED",
   "RECTIFICATION",
   "SYSTEM",
+  "NEW_REGISTRATION",
+  "MORE_INFO_REQUIRED",
 ]);
 
 export const notificationsTable = pgTable("notifications", {

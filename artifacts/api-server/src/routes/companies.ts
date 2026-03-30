@@ -4,6 +4,7 @@ import {
   companiesTable,
   pipelinesTable,
   pipelineStepsTable,
+  pipelineEventsTable,
   usersTable,
   entityTypeEnum,
   pipelineStatusEnum,
@@ -14,6 +15,9 @@ import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { DEFAULT_PIPELINE_STEPS } from "../lib/pipelineSteps";
 import { safeUserFields, SafeUser } from "../lib/safeUser";
+import { autoAssignPipeline } from "../lib/assignment";
+import { createNotification } from "../lib/notifications";
+import { sendNewRegistrationEmail } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -210,9 +214,19 @@ router.post("/companies", requireAuth, async (req, res) => {
         description: step.description,
         order: step.order,
         status: "PENDING" as const,
+        assignedTo: step.assignedTo,
       }));
 
       await tx.insert(pipelineStepsTable).values(stepValues);
+
+      await tx.insert(pipelineEventsTable).values({
+        id: randomUUID(),
+        pipelineId,
+        actorId: actor.id,
+        eventType: "SYSTEM",
+        newStatus: "NEW",
+        message: `New registration submitted by ${actor.name}`,
+      });
     });
 
     const [company] = await db
@@ -236,10 +250,60 @@ router.post("/companies", requireAuth, async (req, res) => {
       createdAt: actor.createdAt,
     };
 
-    res.status(201).json({
+    const response = {
       ...company,
       pipeline: { ...pipeline, assignedFacilitator: null },
       customer: safeActor,
+    };
+
+    res.status(201).json(response);
+
+    setImmediate(async () => {
+      try {
+        const assigned = await autoAssignPipeline({
+          pipelineId,
+          companyName: body.name,
+          companyId,
+        });
+
+        if (assigned) {
+          await db.insert(pipelineEventsTable).values({
+            id: randomUUID(),
+            pipelineId,
+            actorId: null,
+            eventType: "ASSIGNED",
+            previousStatus: "NEW",
+            newStatus: "ASSIGNED",
+            message: `Auto-assigned to facilitator ${assigned.facilitatorName}`,
+          });
+
+          await createNotification({
+            userId: assigned.facilitatorId,
+            pipelineId,
+            type: "NEW_REGISTRATION",
+            message: `New company registration assigned to you: ${body.name} (${body.entityType.replace(/_/g, " ")}) from ${actor.name}`,
+          });
+
+          await createNotification({
+            userId: actor.id,
+            pipelineId,
+            type: "ASSIGNED",
+            message: `Your registration for ${body.name} has been assigned to facilitator ${assigned.facilitatorName}`,
+          });
+
+          await sendNewRegistrationEmail({
+            facilitatorEmail: assigned.facilitatorEmail,
+            facilitatorName: assigned.facilitatorName,
+            companyName: body.name,
+            entityType: body.entityType,
+            customerName: actor.name,
+            pipelineId,
+            appUrl: process.env.FRONTEND_URL,
+          });
+        }
+      } catch (bgErr) {
+        req.log.error({ bgErr, pipelineId }, "Background auto-assignment failed");
+      }
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create company");

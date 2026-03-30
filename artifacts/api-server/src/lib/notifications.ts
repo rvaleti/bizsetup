@@ -10,7 +10,9 @@ export type NotificationType =
   | "STEP_COMPLETE"
   | "REJECTED"
   | "RECTIFICATION"
-  | "SYSTEM";
+  | "SYSTEM"
+  | "NEW_REGISTRATION"
+  | "MORE_INFO_REQUIRED";
 
 type BroadcastFn = (userId: string, notification: object) => void;
 

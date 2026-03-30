@@ -9,7 +9,8 @@ export const PipelineStepSchema = z.object({
   stepKey: z.string(),
   stepName: z.string(),
   description: z.string().nullable().optional(),
-  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]),
+  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETED", "SKIPPED", "WAITING"]),
+  assignedTo: z.enum(["CUSTOMER", "FACILITATOR"]).nullable().optional(),
   order: z.number().or(z.string()).transform(val => Number(val)),
   completedAt: z.string().nullable().optional(),
   completedBy: z.string().nullable().optional(),
@@ -97,5 +98,69 @@ export function useAssignFacilitator() {
       queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
       queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
     }
+  });
+}
+
+export function useRequestMoreInfo() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pipelineId, details }: { pipelineId: string; details: string }) => {
+      const res = await fetch(`/api/pipelines/${pipelineId}/more-info`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ details }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to request more info");
+      }
+      return res.json();
+    },
+    onSuccess: (_, { pipelineId }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
+    },
+  });
+}
+
+export function useRectify() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pipelineId, notes }: { pipelineId: string; notes: string }) => {
+      const res = await fetch(`/api/pipelines/${pipelineId}/rectify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to create rectification");
+      }
+      return res.json();
+    },
+    onSuccess: (_, { pipelineId }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
+    },
+  });
+}
+
+export function useResubmit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ pipelineId }: { pipelineId: string }) => {
+      const res = await fetch(`/api/pipelines/${pipelineId}/resubmit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to mark resubmission");
+      }
+      return res.json();
+    },
+    onSuccess: (_, { pipelineId }) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/pipelines/${pipelineId}`] });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/companies") });
+    },
   });
 }

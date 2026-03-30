@@ -8,31 +8,45 @@ import {
   usersTable,
   User,
 } from "@workspace/db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { safeUserFields, SafeUser } from "../lib/safeUser";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth";
 import { createNotification } from "../lib/notifications";
-import { DEFAULT_PIPELINE_STEPS } from "../lib/pipelineSteps";
+import { sendMoreInfoEmail } from "../lib/mailer";
+import { DEFAULT_PIPELINE_STEPS, DYNAMIC_STEP_TEMPLATES } from "../lib/pipelineSteps";
 
 const router: IRouter = Router();
 
-type PipelineStatus = "NEW" | "ASSIGNED" | "IN_PROGRESS" | "WAITING" | "COMPLETED" | "REJECTED" | "RECTIFICATION";
-type StepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED";
-type NotificationType = "STATUS_CHANGE" | "ASSIGNED" | "COMMENT" | "STEP_COMPLETE" | "REJECTED" | "RECTIFICATION" | "SYSTEM";
+type PipelineStatus =
+  | "NEW"
+  | "ASSIGNED"
+  | "IN_PROGRESS"
+  | "WAITING"
+  | "COMPLETED"
+  | "REJECTED"
+  | "RECTIFICATION"
+  | "RE_SUBMITTED";
+
+type StepStatus = "PENDING" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "WAITING";
+type NotificationType = "STATUS_CHANGE" | "ASSIGNED" | "COMMENT" | "STEP_COMPLETE" | "REJECTED" | "RECTIFICATION" | "SYSTEM" | "NEW_REGISTRATION" | "MORE_INFO_REQUIRED";
 
 const VALID_TRANSITIONS: Record<PipelineStatus, PipelineStatus[]> = {
   NEW: ["ASSIGNED", "REJECTED"],
   ASSIGNED: ["IN_PROGRESS", "REJECTED"],
   IN_PROGRESS: ["WAITING", "COMPLETED", "REJECTED", "RECTIFICATION"],
-  WAITING: ["IN_PROGRESS", "REJECTED", "RECTIFICATION"],
-  RECTIFICATION: ["IN_PROGRESS", "REJECTED"],
+  WAITING: ["IN_PROGRESS", "REJECTED", "RECTIFICATION", "RE_SUBMITTED"],
+  RECTIFICATION: ["IN_PROGRESS", "WAITING", "REJECTED", "RE_SUBMITTED"],
+  RE_SUBMITTED: ["WAITING", "IN_PROGRESS", "REJECTED", "COMPLETED"],
   COMPLETED: [],
   REJECTED: [],
 };
 
 const VALID_PIPELINE_STATUSES = new Set<string>(Object.keys(VALID_TRANSITIONS));
-const VALID_STEP_STATUSES = new Set<string>(["PENDING", "IN_PROGRESS", "COMPLETED", "SKIPPED"]);
+const VALID_STEP_STATUSES = new Set<string>(["PENDING", "IN_PROGRESS", "COMPLETED", "SKIPPED", "WAITING"]);
+
+const STEP_TRIGGERS_WAITING = new Set(["gst_filing", "govt_registration"]);
+const STEP_TRIGGERS_COMPLETED = new Set(["company_registered"]);
 
 async function getPipelineDetail(pipelineId: string) {
   const [pipeline] = await db
@@ -158,6 +172,7 @@ router.post("/pipelines", requireAuth, async (req, res) => {
         description: step.description,
         order: step.order,
         status: "PENDING" as const,
+        assignedTo: step.assignedTo,
       }));
 
       await tx.insert(pipelineStepsTable).values(stepValues);
@@ -246,7 +261,7 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
       return;
     }
 
-    const allowed = VALID_TRANSITIONS[pipeline.status] ?? [];
+    const allowed = VALID_TRANSITIONS[pipeline.status as PipelineStatus] ?? [];
     if (!allowed.includes(newStatus)) {
       res.status(422).json({
         error: "INVALID_TRANSITION",
@@ -287,21 +302,11 @@ router.patch("/pipelines/:pipelineId/status", requireAuth, async (req, res) => {
     const notifMessage = `Pipeline for ${company?.name ?? "your company"} moved to ${newStatus}`;
 
     if (company?.customerId) {
-      await createNotification({
-        userId: company.customerId,
-        pipelineId,
-        type: notifType,
-        message: notifMessage,
-      });
+      await createNotification({ userId: company.customerId, pipelineId, type: notifType, message: notifMessage });
     }
 
     if (pipeline.assignedFacilitatorId && pipeline.assignedFacilitatorId !== actor.id) {
-      await createNotification({
-        userId: pipeline.assignedFacilitatorId,
-        pipelineId,
-        type: notifType,
-        message: notifMessage,
-      });
+      await createNotification({ userId: pipeline.assignedFacilitatorId, pipelineId, type: notifType, message: notifMessage });
     }
 
     const detail = await getPipelineDetail(pipelineId);
@@ -361,11 +366,7 @@ router.post("/pipelines/:pipelineId/assign", requireAuth, async (req, res) => {
 
     await db
       .update(pipelinesTable)
-      .set({
-        assignedFacilitatorId: facilitatorId,
-        status: "ASSIGNED",
-        updatedAt: new Date(),
-      })
+      .set({ assignedFacilitatorId: facilitatorId, status: "ASSIGNED", updatedAt: new Date() })
       .where(eq(pipelinesTable.id, pipelineId));
 
     await db.insert(pipelineEventsTable).values({
@@ -459,6 +460,12 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
       return;
     }
 
+    const [company] = await db
+      .select()
+      .from(companiesTable)
+      .where(eq(companiesTable.id, pipeline.companyId))
+      .limit(1);
+
     if (newStepStatus === "COMPLETED") {
       await db
         .update(pipelineStepsTable)
@@ -473,54 +480,85 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
         message: `Step "${step.stepName}" marked as completed`,
       });
 
-      const allSteps = await db
-        .select()
-        .from(pipelineStepsTable)
-        .where(eq(pipelineStepsTable.pipelineId, pipelineId));
-
-      const allDone = allSteps.every(
-        (s) => s.id === stepId ? true : s.status === "COMPLETED" || s.status === "SKIPPED"
-      );
-
-      if (allDone) {
+      if (STEP_TRIGGERS_WAITING.has(step.stepKey)) {
+        await db.update(pipelinesTable).set({ status: "WAITING", updatedAt: new Date() }).where(eq(pipelinesTable.id, pipelineId));
         await db.insert(pipelineEventsTable).values({
           id: randomUUID(),
           pipelineId,
           actorId: null,
-          eventType: "SYSTEM",
-          message: "All steps completed. Pipeline is ready for completion.",
+          eventType: "STATUS_CHANGE",
+          previousStatus: pipeline.status,
+          newStatus: "WAITING",
+          message: `Pipeline moved to WAITING — pending government response for step "${step.stepName}"`,
         });
-      } else {
-        const nextStep = allSteps.find(
-          (s) => s.id !== stepId && s.status === "PENDING"
-        );
-        if (nextStep) {
-          await db
-            .update(pipelinesTable)
-            .set({ currentStep: nextStep.stepKey, updatedAt: new Date() })
-            .where(eq(pipelinesTable.id, pipelineId));
+        if (company?.customerId) {
+          await createNotification({
+            userId: company.customerId,
+            pipelineId,
+            type: "STATUS_CHANGE",
+            message: `Step "${step.stepName}" filed and is now awaiting government response for ${company.name}`,
+          });
         }
-      }
-
-      const [company] = await db
-        .select()
-        .from(companiesTable)
-        .where(eq(companiesTable.id, pipeline.companyId))
-        .limit(1);
-
-      if (company?.customerId) {
-        await createNotification({
-          userId: company.customerId,
+      } else if (STEP_TRIGGERS_COMPLETED.has(step.stepKey)) {
+        await db.update(pipelinesTable).set({ status: "COMPLETED", updatedAt: new Date() }).where(eq(pipelinesTable.id, pipelineId));
+        await db.insert(pipelineEventsTable).values({
+          id: randomUUID(),
           pipelineId,
-          type: "STEP_COMPLETE",
-          message: `Step "${step.stepName}" completed for ${company.name}`,
+          actorId: null,
+          eventType: "STATUS_CHANGE",
+          previousStatus: pipeline.status,
+          newStatus: "COMPLETED",
+          message: `Company registration completed successfully!`,
         });
+        if (company?.customerId) {
+          await createNotification({
+            userId: company.customerId,
+            pipelineId,
+            type: "STATUS_CHANGE",
+            message: `Great news! ${company.name} has been successfully registered!`,
+          });
+        }
+        if (pipeline.assignedFacilitatorId) {
+          await createNotification({
+            userId: pipeline.assignedFacilitatorId,
+            pipelineId,
+            type: "STATUS_CHANGE",
+            message: `Pipeline for ${company?.name ?? "company"} marked as COMPLETED`,
+          });
+        }
+      } else {
+        const allSteps = await db
+          .select()
+          .from(pipelineStepsTable)
+          .where(eq(pipelineStepsTable.pipelineId, pipelineId));
+
+        const nextStep = allSteps.find((s) => s.id !== stepId && s.status === "PENDING");
+        if (nextStep) {
+          await db.update(pipelinesTable).set({ currentStep: nextStep.stepKey, updatedAt: new Date() }).where(eq(pipelinesTable.id, pipelineId));
+        }
+
+        if (company?.customerId) {
+          await createNotification({
+            userId: company.customerId,
+            pipelineId,
+            type: "STEP_COMPLETE",
+            message: `Step "${step.stepName}" completed for ${company.name}`,
+          });
+        }
       }
     } else {
       await db
         .update(pipelineStepsTable)
         .set({ status: newStepStatus })
         .where(eq(pipelineStepsTable.id, stepId));
+
+      if (newStepStatus === "IN_PROGRESS") {
+        await db.update(pipelinesTable).set({
+          currentStep: step.stepKey,
+          status: pipeline.status === "ASSIGNED" ? "IN_PROGRESS" : pipeline.status,
+          updatedAt: new Date(),
+        }).where(eq(pipelinesTable.id, pipelineId));
+      }
     }
 
     const [updatedStep] = await db
@@ -533,6 +571,308 @@ router.patch("/pipelines/:pipelineId/steps/:stepId", requireAuth, async (req, re
   } catch (err) {
     req.log.error({ err }, "Failed to update step");
     res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to update step" });
+  }
+});
+
+router.post("/pipelines/:pipelineId/more-info", requireAuth, async (req, res) => {
+  const actor = req.user as User;
+  const { pipelineId } = req.params as Record<string, string>;
+  const { details } = req.body as { details: string };
+
+  if (actor.role !== "FACILITATOR" && actor.role !== "ADMIN") {
+    res.status(403).json({ error: "FORBIDDEN", message: "Only facilitators or admin can request more info" });
+    return;
+  }
+
+  if (!details?.trim()) {
+    res.status(422).json({ error: "VALIDATION_ERROR", message: "Details of what is required must be provided" });
+    return;
+  }
+
+  try {
+    const [pipeline] = await db
+      .select()
+      .from(pipelinesTable)
+      .where(eq(pipelinesTable.id, pipelineId))
+      .limit(1);
+
+    if (!pipeline) {
+      res.status(404).json({ error: "NOT_FOUND", message: "Pipeline not found" });
+      return;
+    }
+
+    const hasAccess = await canAccessPipeline(actor, pipeline);
+    if (!hasAccess) {
+      res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
+      return;
+    }
+
+    const TERMINAL: PipelineStatus[] = ["COMPLETED", "REJECTED"];
+    if (TERMINAL.includes(pipeline.status as PipelineStatus)) {
+      res.status(422).json({ error: "INVALID_STATE", message: "Cannot request info on a completed or rejected pipeline" });
+      return;
+    }
+
+    const existingSteps = await db
+      .select()
+      .from(pipelineStepsTable)
+      .where(eq(pipelineStepsTable.pipelineId, pipelineId))
+      .orderBy(asc(pipelineStepsTable.order));
+
+    const maxOrder = existingSteps.reduce((max, s) => {
+      const n = parseInt(s.order, 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+
+    const newStepOrder = String(maxOrder + 1).padStart(2, "0");
+    const template = DYNAMIC_STEP_TEMPLATES.more_info_required;
+
+    const [newStep] = await db
+      .insert(pipelineStepsTable)
+      .values({
+        id: randomUUID(),
+        pipelineId,
+        stepKey: `${template.stepKey}_${Date.now()}`,
+        stepName: template.stepName,
+        description: `${template.description}\n\nDetails requested: ${details}`,
+        order: newStepOrder,
+        status: "IN_PROGRESS",
+        assignedTo: "CUSTOMER",
+      })
+      .returning();
+
+    await db.insert(pipelineEventsTable).values({
+      id: randomUUID(),
+      pipelineId,
+      actorId: actor.id,
+      eventType: "SYSTEM",
+      message: `More information requested from customer: ${details}`,
+    });
+
+    const [company] = await db
+      .select()
+      .from(companiesTable)
+      .where(eq(companiesTable.id, pipeline.companyId))
+      .limit(1);
+
+    let customerEmail = "";
+    let customerName = "";
+
+    if (company?.customerId) {
+      await createNotification({
+        userId: company.customerId,
+        pipelineId,
+        type: "MORE_INFO_REQUIRED",
+        message: `Your facilitator has requested more information for ${company.name}: ${details}`,
+      });
+
+      const [customer] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, company.customerId))
+        .limit(1);
+
+      if (customer) {
+        customerEmail = customer.email;
+        customerName = customer.name;
+      }
+    }
+
+    if (customerEmail) {
+      await sendMoreInfoEmail({
+        customerEmail,
+        customerName,
+        companyName: company?.name ?? "your company",
+        facilitatorName: actor.name,
+        details,
+        pipelineId,
+        appUrl: process.env.FRONTEND_URL,
+      });
+    }
+
+    res.status(201).json({ step: newStep, message: "More info request sent to customer" });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create more-info step");
+    res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to request more information" });
+  }
+});
+
+router.post("/pipelines/:pipelineId/rectify", requireAuth, async (req, res) => {
+  const actor = req.user as User;
+  const { pipelineId } = req.params as Record<string, string>;
+  const { notes } = req.body as { notes: string };
+
+  if (actor.role !== "FACILITATOR" && actor.role !== "ADMIN") {
+    res.status(403).json({ error: "FORBIDDEN", message: "Only facilitators or admin can raise rectification" });
+    return;
+  }
+
+  if (!notes?.trim()) {
+    res.status(422).json({ error: "VALIDATION_ERROR", message: "Rectification notes must be provided" });
+    return;
+  }
+
+  try {
+    const [pipeline] = await db
+      .select()
+      .from(pipelinesTable)
+      .where(eq(pipelinesTable.id, pipelineId))
+      .limit(1);
+
+    if (!pipeline) {
+      res.status(404).json({ error: "NOT_FOUND", message: "Pipeline not found" });
+      return;
+    }
+
+    const hasAccess = await canAccessPipeline(actor, pipeline);
+    if (!hasAccess) {
+      res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
+      return;
+    }
+
+    const TERMINAL: PipelineStatus[] = ["COMPLETED", "REJECTED"];
+    if (TERMINAL.includes(pipeline.status as PipelineStatus)) {
+      res.status(422).json({ error: "INVALID_STATE", message: "Cannot rectify a completed or rejected pipeline" });
+      return;
+    }
+
+    const existingSteps = await db
+      .select()
+      .from(pipelineStepsTable)
+      .where(eq(pipelineStepsTable.pipelineId, pipelineId))
+      .orderBy(asc(pipelineStepsTable.order));
+
+    const maxOrder = existingSteps.reduce((max, s) => {
+      const n = parseInt(s.order, 10);
+      return isNaN(n) ? max : Math.max(max, n);
+    }, 0);
+
+    const newStepOrder = String(maxOrder + 1).padStart(2, "0");
+    const template = DYNAMIC_STEP_TEMPLATES.rectification;
+
+    const [newStep] = await db
+      .insert(pipelineStepsTable)
+      .values({
+        id: randomUUID(),
+        pipelineId,
+        stepKey: `${template.stepKey}_${Date.now()}`,
+        stepName: template.stepName,
+        description: `${template.description}\n\nQuery received: ${notes}`,
+        order: newStepOrder,
+        status: "IN_PROGRESS",
+        assignedTo: "FACILITATOR",
+      })
+      .returning();
+
+    await db.update(pipelinesTable).set({
+      status: "RECTIFICATION",
+      rectificationNotes: notes,
+      updatedAt: new Date(),
+    }).where(eq(pipelinesTable.id, pipelineId));
+
+    await db.insert(pipelineEventsTable).values({
+      id: randomUUID(),
+      pipelineId,
+      actorId: actor.id,
+      eventType: "STATUS_CHANGE",
+      previousStatus: pipeline.status,
+      newStatus: "RECTIFICATION",
+      message: `Query received from government — rectification required: ${notes}`,
+    });
+
+    const [company] = await db
+      .select()
+      .from(companiesTable)
+      .where(eq(companiesTable.id, pipeline.companyId))
+      .limit(1);
+
+    if (company?.customerId) {
+      await createNotification({
+        userId: company.customerId,
+        pipelineId,
+        type: "RECTIFICATION",
+        message: `A government query has been raised for ${company.name}. Facilitator is working on rectification.`,
+      });
+    }
+
+    res.status(201).json({
+      step: newStep,
+      pipelineStatus: "RECTIFICATION",
+      message: "Rectification step created and pipeline moved to RECTIFICATION status",
+    });
+  } catch (err) {
+    req.log.error({ err }, "Failed to create rectification step");
+    res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to create rectification step" });
+  }
+});
+
+router.post("/pipelines/:pipelineId/resubmit", requireAuth, async (req, res) => {
+  const actor = req.user as User;
+  const { pipelineId } = req.params as Record<string, string>;
+
+  if (actor.role !== "FACILITATOR" && actor.role !== "ADMIN") {
+    res.status(403).json({ error: "FORBIDDEN", message: "Only facilitators or admin can mark re-submission" });
+    return;
+  }
+
+  try {
+    const [pipeline] = await db
+      .select()
+      .from(pipelinesTable)
+      .where(eq(pipelinesTable.id, pipelineId))
+      .limit(1);
+
+    if (!pipeline) {
+      res.status(404).json({ error: "NOT_FOUND", message: "Pipeline not found" });
+      return;
+    }
+
+    const hasAccess = await canAccessPipeline(actor, pipeline);
+    if (!hasAccess) {
+      res.status(403).json({ error: "FORBIDDEN", message: "Access denied" });
+      return;
+    }
+
+    if (pipeline.status !== "RECTIFICATION") {
+      res.status(422).json({ error: "INVALID_STATE", message: "Pipeline must be in RECTIFICATION state to resubmit" });
+      return;
+    }
+
+    await db.update(pipelinesTable).set({
+      status: "RE_SUBMITTED",
+      updatedAt: new Date(),
+    }).where(eq(pipelinesTable.id, pipelineId));
+
+    await db.insert(pipelineEventsTable).values({
+      id: randomUUID(),
+      pipelineId,
+      actorId: actor.id,
+      eventType: "STATUS_CHANGE",
+      previousStatus: "RECTIFICATION",
+      newStatus: "RE_SUBMITTED",
+      message: `Application re-submitted to government after rectification`,
+    });
+
+    const [company] = await db
+      .select()
+      .from(companiesTable)
+      .where(eq(companiesTable.id, pipeline.companyId))
+      .limit(1);
+
+    if (company?.customerId) {
+      await createNotification({
+        userId: company.customerId,
+        pipelineId,
+        type: "STATUS_CHANGE",
+        message: `Good news! The rectified application for ${company.name} has been re-submitted to the government. Awaiting approval.`,
+      });
+    }
+
+    const detail = await getPipelineDetail(pipelineId);
+    res.json(detail);
+  } catch (err) {
+    req.log.error({ err }, "Failed to mark re-submission");
+    res.status(500).json({ error: "INTERNAL_ERROR", message: "Failed to mark re-submission" });
   }
 });
 

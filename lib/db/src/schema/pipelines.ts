@@ -12,6 +12,7 @@ export const pipelineStatusEnum = pgEnum("pipeline_status", [
   "COMPLETED",
   "REJECTED",
   "RECTIFICATION",
+  "RE_SUBMITTED",
 ]);
 
 export const stepStatusEnum = pgEnum("step_status", [
@@ -19,6 +20,7 @@ export const stepStatusEnum = pgEnum("step_status", [
   "IN_PROGRESS",
   "COMPLETED",
   "SKIPPED",
+  "WAITING",
 ]);
 
 export const pipelinesTable = pgTable("pipelines", {
@@ -52,6 +54,7 @@ export const pipelineStepsTable = pgTable("pipeline_steps", {
   description: text("description"),
   status: stepStatusEnum("status").notNull().default("PENDING"),
   order: text("order").notNull(),
+  assignedTo: text("assigned_to").default("FACILITATOR"),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   completedBy: text("completed_by").references(() => usersTable.id, {
     onDelete: "set null",

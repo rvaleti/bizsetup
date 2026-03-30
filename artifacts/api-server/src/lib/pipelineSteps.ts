@@ -3,77 +3,59 @@ export interface DefaultStep {
   stepName: string;
   description: string;
   order: string;
+  assignedTo: "CUSTOMER" | "FACILITATOR";
 }
 
 export const DEFAULT_PIPELINE_STEPS: DefaultStep[] = [
   {
-    stepKey: "name_search",
-    stepName: "Name Search & Reservation",
+    stepKey: "company_details",
+    stepName: "Company Details",
     description:
-      "Search for company name availability and reserve it via RUN (Reserve Unique Name) on MCA portal.",
+      "Initial company information collected from the customer. A facilitator reviews the details and confirms the registration is ready to proceed.",
     order: "01",
+    assignedTo: "FACILITATOR",
   },
   {
-    stepKey: "dsc",
-    stepName: "Digital Signature Certificate (DSC)",
+    stepKey: "gst_filing",
+    stepName: "File for GST with Government of India",
     description:
-      "Obtain DSC for all proposed directors/partners. Required for filing forms digitally with MCA.",
+      "File GST registration application on the GST portal. Upon submission, status moves to Waiting — pending government acknowledgement and GSTIN issuance.",
     order: "02",
+    assignedTo: "FACILITATOR",
   },
   {
-    stepKey: "din",
-    stepName: "Director Identification Number (DIN)",
+    stepKey: "govt_registration",
+    stepName: "File for Registration with Government of India",
     description:
-      "Apply for DIN for all proposed directors via DIR-3 KYC or SPICe+ form.",
+      "Submit the company incorporation / registration application with the Ministry of Corporate Affairs (MCA) or relevant authority. Pending government review and approval.",
     order: "03",
+    assignedTo: "FACILITATOR",
   },
   {
-    stepKey: "moa_aoa",
-    stepName: "Drafting MOA & AOA",
+    stepKey: "company_registered",
+    stepName: "Company Registered",
     description:
-      "Draft Memorandum of Association (MOA) and Articles of Association (AOA) as per chosen entity type.",
+      "Certificate of Incorporation (COI) / registration certificate received from the government. The company is now officially registered.",
     order: "04",
-  },
-  {
-    stepKey: "spice_plus",
-    stepName: "SPICe+ Filing",
-    description:
-      "File SPICe+ (Simplified Proforma for Incorporating Company Electronically Plus) on MCA portal with all documents.",
-    order: "05",
-  },
-  {
-    stepKey: "coi",
-    stepName: "Certificate of Incorporation",
-    description:
-      "Receive Certificate of Incorporation (COI) from Registrar of Companies (ROC) upon successful SPICe+ processing.",
-    order: "06",
-  },
-  {
-    stepKey: "pan_tan",
-    stepName: "PAN & TAN Registration",
-    description:
-      "Apply for Permanent Account Number (PAN) and Tax Deduction Account Number (TAN) for the company.",
-    order: "07",
-  },
-  {
-    stepKey: "bank_account",
-    stepName: "Bank Account Opening",
-    description:
-      "Open a current bank account in the company name using COI, MOA/AOA, PAN, and other KYC documents.",
-    order: "08",
-  },
-  {
-    stepKey: "gst",
-    stepName: "GST Registration",
-    description:
-      "Register for Goods and Services Tax (GST) if applicable based on turnover or nature of business.",
-    order: "09",
-  },
-  {
-    stepKey: "commencement",
-    stepName: "Commencement of Business Filing",
-    description:
-      "File Form INC-20A (Declaration of commencement of business) within 180 days of incorporation.",
-    order: "10",
+    assignedTo: "FACILITATOR",
   },
 ];
+
+export const DYNAMIC_STEP_TEMPLATES = {
+  rectification: {
+    stepKey: "rectification",
+    stepName: "Rectification & Re-submission",
+    description:
+      "A query was raised by the government authority. Facilitator addresses the query, rectifies the application, and re-submits to the government. Status moves to RE_SUBMITTED after submission.",
+    assignedTo: "FACILITATOR" as const,
+  },
+  more_info_required: {
+    stepKey: "more_info_required",
+    stepName: "More Information Required from Customer",
+    description:
+      "Facilitator requires additional documents or information from the customer to proceed. Customer has been notified and must respond via the chat or portal.",
+    assignedTo: "CUSTOMER" as const,
+  },
+};
+
+export type DynamicStepType = keyof typeof DYNAMIC_STEP_TEMPLATES;

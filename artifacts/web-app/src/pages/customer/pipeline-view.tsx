@@ -1,5 +1,5 @@
 import { usePipeline } from "@/hooks/use-pipelines";
-import { useRoute, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { Chatter } from "@/components/chatter";
 import {
@@ -143,7 +143,7 @@ function PipelineVisualizer({ steps }: { steps: any[] }) {
 }
 
 export default function CustomerPipelineView() {
-  const [, params] = useRoute("/pipeline/:id");
+  const params = useParams<{ id: string }>();
   const pipelineId = params?.id || "";
 
   const { data: pipeline, isLoading, error } = usePipeline(pipelineId);

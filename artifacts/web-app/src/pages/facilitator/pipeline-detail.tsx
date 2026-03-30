@@ -6,7 +6,7 @@ import {
   useRectify,
   useResubmit,
 } from "@/hooks/use-pipelines";
-import { useRoute, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { Chatter } from "@/components/chatter";
 import { Button } from "@/components/ui/button";
@@ -130,7 +130,7 @@ function entityTypeLabel(type: string): string {
 }
 
 export default function FacilitatorPipelineDetail() {
-  const [, params] = useRoute("/facilitator/pipeline/:id");
+  const params = useParams<{ id: string }>();
   const pipelineId = params?.id || "";
 
   const { data: pipeline, isLoading } = usePipeline(pipelineId);

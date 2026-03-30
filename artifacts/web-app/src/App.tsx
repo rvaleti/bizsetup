@@ -1,9 +1,10 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import type { ComponentType } from "react";
+import { useEffect } from "react";
 
 // Pages
 import Login from "@/pages/login";
@@ -38,19 +39,23 @@ interface ProtectedRouteProps {
 
 function ProtectedRoute({ component: Component, allowedRoles, ...rest }: ProtectedRouteProps) {
   const { data: user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !user) {
+      navigate("/");
+    }
+  }, [isLoading, user, navigate]);
 
   if (isLoading) return <div className="h-screen w-full bg-slate-50 flex items-center justify-center animate-pulse"><div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" /></div>;
-  if (!user) {
-    window.location.href = "/";
-    return null;
-  }
+  if (!user) return <div className="h-screen w-full bg-slate-50 flex items-center justify-center"><div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" /></div>;
   
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
       <div className="h-screen flex items-center justify-center flex-col text-center p-6">
         <h2 className="text-2xl font-bold text-red-600 mb-2">Access Denied</h2>
         <p className="text-slate-600 mb-6">You do not have permission to view this page.</p>
-        <button onClick={() => window.location.href="/"} className="px-4 py-2 bg-primary text-white rounded-lg">Go Home</button>
+        <button onClick={() => navigate("/")} className="px-4 py-2 bg-primary text-white rounded-lg">Go Home</button>
       </div>
     );
   }
@@ -59,7 +64,7 @@ function ProtectedRoute({ component: Component, allowedRoles, ...rest }: Protect
 }
 
 function Router() {
-  const { data: user } = useAuth();
+  const { data: user, isLoading: authLoading } = useAuth();
 
   return (
     <Switch>
@@ -67,7 +72,11 @@ function Router() {
       
       {/* Wrapped in AppLayout */}
       <Route path="/:rest*">
-        {user ? (
+        {authLoading ? (
+          <div className="h-screen w-full bg-slate-50 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+          </div>
+        ) : user ? (
           <AppLayout>
             <Switch>
               <Route path="/dashboard" component={() => <ProtectedRoute component={CustomerDashboard} allowedRoles={["CUSTOMER"]} />} />

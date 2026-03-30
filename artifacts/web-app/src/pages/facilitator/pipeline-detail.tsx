@@ -130,8 +130,15 @@ function entityTypeLabel(type: string): string {
 }
 
 export default function FacilitatorPipelineDetail() {
+  console.log("[INIT] FacilitatorPipelineDetail component loaded");
   const [location] = useLocation();
-  const pipelineId = location.split("/").pop() || "";
+  
+  // Extract pipeline ID from URL - handles /facilitator/pipeline/[id]
+  const pipelineId = location.includes("/facilitator/pipeline/") 
+    ? location.split("/facilitator/pipeline/")[1]?.split("?")[0] || ""
+    : location.split("/").pop() || "";
+
+  console.log("[DEBUG] FacilitatorPipelineDetail:", { location, pipelineId, locationParts: location.split("/") });
 
   const { data: pipeline, isLoading } = usePipeline(pipelineId);
   const updateStatus = useUpdatePipelineStatus();

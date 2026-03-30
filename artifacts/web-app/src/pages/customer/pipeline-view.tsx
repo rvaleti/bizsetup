@@ -146,8 +146,15 @@ export default function CustomerPipelineView() {
   const [location] = useLocation();
   
   const pipelineId = useMemo(() => {
-    const match = location.match(/^\/pipeline\/(.+)$/);
-    return match ? match[1] : "";
+    // Handle /pipeline/[id] and strip query params
+    const parts = location.split("/pipeline/");
+    if (parts.length > 1) {
+      const id = parts[1].split("?")[0];
+      console.log("[DEBUG] CustomerPipelineView extracted ID:", { location, id });
+      return id;
+    }
+    console.log("[DEBUG] CustomerPipelineView no match for:", { location });
+    return "";
   }, [location]);
 
   const { data: pipeline, isLoading, error } = usePipeline(pipelineId);

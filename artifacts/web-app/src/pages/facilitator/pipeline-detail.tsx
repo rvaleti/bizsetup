@@ -137,6 +137,8 @@ export default function FacilitatorPipelineDetail() {
     ? location.split("/facilitator/pipeline/")[1]?.split("?")[0] || ""
     : location.split("/").pop() || "";
 
+  console.log("[PIPELINE_DETAIL]", { location, pipelineId, hasId: !!pipelineId });
+
   const { data: pipeline, isLoading } = usePipeline(pipelineId);
   const updateStatus = useUpdatePipelineStatus();
   const updateStep = useUpdatePipelineStep();

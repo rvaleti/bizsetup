@@ -6,7 +6,7 @@ import {
   useRectify,
   useResubmit,
 } from "@/hooks/use-pipelines";
-import { useLocation, Link } from "wouter";
+import { useRoute, Link } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { Chatter } from "@/components/chatter";
 import { Button } from "@/components/ui/button";
@@ -130,14 +130,8 @@ function entityTypeLabel(type: string): string {
 }
 
 export default function FacilitatorPipelineDetail() {
-  const [location] = useLocation();
-  
-  // Extract pipeline ID from URL - handles /facilitator/pipeline/[id]
-  const pipelineId = location.includes("/facilitator/pipeline/") 
-    ? location.split("/facilitator/pipeline/")[1]?.split("?")[0] || ""
-    : location.split("/").pop() || "";
-
-  console.log("[PIPELINE_DETAIL]", { location, pipelineId, hasId: !!pipelineId });
+  const [, params] = useRoute("/facilitator/pipeline/:id");
+  const pipelineId = params?.id || "";
 
   const { data: pipeline, isLoading } = usePipeline(pipelineId);
   const updateStatus = useUpdatePipelineStatus();
@@ -237,9 +231,9 @@ export default function FacilitatorPipelineDetail() {
 
   if (!pipelineId) {
     return (
-      <div className="text-center py-20 text-red-600">
-        <h2 className="font-bold text-lg mb-2">Error: No Pipeline ID</h2>
-        <p>Could not extract pipeline ID from URL: {location}</p>
+      <div className="text-center py-20">
+        <h3 className="text-lg font-semibold text-slate-900">Pipeline not found</h3>
+        <p className="text-slate-500 mt-2">The pipeline could not be loaded. Try refreshing the page.</p>
       </div>
     );
   }

@@ -2,11 +2,11 @@ import { useCompany } from "@/hooks/use-companies";
 import { usePipeline, useAssignFacilitator } from "@/hooks/use-pipelines";
 import { useUsers } from "@/hooks/use-users";
 import { useAuth } from "@/hooks/use-auth";
-import { useRoute } from "wouter";
+import { useRoute, Link } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { PipelineStepper } from "@/components/pipeline-stepper";
 import { Chatter } from "@/components/chatter";
-import { Building2, MapPin, Phone, Mail, UserCircle, UserPlus } from "lucide-react";
+import { Building2, MapPin, Phone, Mail, UserCircle, UserPlus, Eye } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -66,6 +66,14 @@ export default function CustomerCompanyDetail() {
           </div>
           
           <div className="flex flex-col gap-3">
+            {pipelineId && (
+              <Link href={`/pipeline/${pipelineId}`}>
+                <Button className="w-full gap-2 bg-emerald-600 hover:bg-emerald-700">
+                  <Eye className="w-4 h-4" />
+                  View Pipeline
+                </Button>
+              </Link>
+            )}
             {pipeline?.assignedFacilitator ? (
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center gap-4 min-w-[250px]">
                 <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">

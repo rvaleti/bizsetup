@@ -9,6 +9,7 @@ import type { ComponentType } from "react";
 import Login from "@/pages/login";
 import CustomerDashboard from "@/pages/customer/dashboard";
 import CustomerCompanyDetail from "@/pages/customer/company-detail";
+import CustomerPipelineView from "@/pages/customer/pipeline-view";
 import FacilitatorDashboard from "@/pages/facilitator/dashboard";
 import FacilitatorPipelineDetail from "@/pages/facilitator/pipeline-detail";
 import AdminDashboard from "@/pages/admin/dashboard";
@@ -71,6 +72,7 @@ function Router() {
             <Switch>
               <Route path="/dashboard" component={() => <ProtectedRoute component={CustomerDashboard} allowedRoles={["CUSTOMER"]} />} />
               <Route path="/dashboard/company/:id" component={() => <ProtectedRoute component={CustomerCompanyDetail} allowedRoles={["CUSTOMER", "ADMIN", "FACILITATOR"]} />} />
+              <Route path="/pipeline/:id" component={() => <ProtectedRoute component={CustomerPipelineView} allowedRoles={["CUSTOMER", "ADMIN", "FACILITATOR"]} />} />
               
               <Route path="/facilitator" component={() => <ProtectedRoute component={FacilitatorDashboard} allowedRoles={["FACILITATOR"]} />} />
               <Route path="/facilitator/pipeline/:id" component={() => <ProtectedRoute component={FacilitatorPipelineDetail} allowedRoles={["FACILITATOR", "ADMIN"]} />} />

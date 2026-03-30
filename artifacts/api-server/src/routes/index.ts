@@ -8,6 +8,7 @@ import notificationsRouter from "./notifications";
 import usersRouter from "./users";
 import adminRouter from "./admin";
 import sseRouter from "./sse";
+import docsRouter from "./docs";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(notificationsRouter);
 router.use(usersRouter);
 router.use(adminRouter);
 router.use(sseRouter);
+router.use(docsRouter);
 
 export default router;

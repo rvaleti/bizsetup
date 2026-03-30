@@ -1,5 +1,5 @@
 import { usePipeline } from "@/hooks/use-pipelines";
-import { useRoute, Link } from "wouter";
+import { useLocation, Link } from "wouter";
 import { StatusBadge } from "@/components/status-badge";
 import { Chatter } from "@/components/chatter";
 import {
@@ -15,7 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { differenceInDays, parseISO, format } from "date-fns";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 
 function PipelineVisualizer({ steps }: { steps: any[] }) {
   const sorted = [...steps].sort((a, b) => a.order - b.order);
@@ -143,8 +143,12 @@ function PipelineVisualizer({ steps }: { steps: any[] }) {
 }
 
 export default function CustomerPipelineView() {
-  const [, params] = useRoute("/pipeline/:id");
-  const pipelineId = params?.id || "";
+  const [location] = useLocation();
+  
+  const pipelineId = useMemo(() => {
+    const match = location.match(/^\/pipeline\/(.+)$/);
+    return match ? match[1] : "";
+  }, [location]);
 
   const { data: pipeline, isLoading, error } = usePipeline(pipelineId);
   const [mermaidLoaded, setMermaidLoaded] = useState(false);
@@ -168,12 +172,23 @@ export default function CustomerPipelineView() {
     );
   }
 
-  if (error || !pipeline) {
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <AlertCircle className="w-12 h-12 mx-auto text-red-400 mb-4" />
+        <h3 className="text-lg font-semibold text-slate-900">Error loading pipeline</h3>
+        <p className="text-slate-500 mt-2">{error instanceof Error ? error.message : "Unable to load this pipeline."}</p>
+      </div>
+    );
+  }
+
+  if (!pipeline || !pipelineId) {
     return (
       <div className="text-center py-20">
         <AlertCircle className="w-12 h-12 mx-auto text-slate-300 mb-4" />
         <h3 className="text-lg font-semibold text-slate-900">Pipeline not found</h3>
-        <p className="text-slate-500 mt-2">Unable to load this pipeline.</p>
+        <p className="text-slate-500 mt-2">The pipeline ID could not be loaded. Try refreshing the page.</p>
+        <p className="text-xs text-slate-400 mt-4">Debug: pipelineId = {pipelineId || "empty"}, location = {location}</p>
       </div>
     );
   }

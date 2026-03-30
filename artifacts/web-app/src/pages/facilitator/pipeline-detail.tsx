@@ -235,6 +235,15 @@ export default function FacilitatorPipelineDetail() {
     }
   };
 
+  if (!pipelineId) {
+    return (
+      <div className="text-center py-20 text-red-600">
+        <h2 className="font-bold text-lg mb-2">Error: No Pipeline ID</h2>
+        <p>Could not extract pipeline ID from URL: {location}</p>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
       <div className="space-y-6">

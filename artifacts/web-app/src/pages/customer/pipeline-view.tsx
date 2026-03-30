@@ -150,10 +150,8 @@ export default function CustomerPipelineView() {
     const parts = location.split("/pipeline/");
     if (parts.length > 1) {
       const id = parts[1].split("?")[0];
-      console.log("[DEBUG] CustomerPipelineView extracted ID:", { location, id });
       return id;
     }
-    console.log("[DEBUG] CustomerPipelineView no match for:", { location });
     return "";
   }, [location]);
 

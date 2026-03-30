@@ -75,10 +75,7 @@ function Router() {
               <Route path="/pipeline/:id" component={() => <ProtectedRoute component={CustomerPipelineView} allowedRoles={["CUSTOMER", "ADMIN", "FACILITATOR"]} />} />
               
               <Route path="/facilitator" component={() => <ProtectedRoute component={FacilitatorDashboard} allowedRoles={["FACILITATOR"]} />} />
-              <Route path="/facilitator/pipeline/:id" component={() => {
-                console.log("[ROUTE] /facilitator/pipeline/:id matched");
-                return <ProtectedRoute component={FacilitatorPipelineDetail} allowedRoles={["FACILITATOR", "ADMIN"]} />;
-              }} />
+              <Route path="/facilitator/pipeline/:id" component={() => <ProtectedRoute component={FacilitatorPipelineDetail} allowedRoles={["FACILITATOR", "ADMIN"]} />} />
               
               <Route path="/admin" component={() => <ProtectedRoute component={AdminDashboard} allowedRoles={["ADMIN"]} />} />
               <Route path="/admin/companies" component={() => <ProtectedRoute component={AdminCompanies} allowedRoles={["ADMIN"]} />} />

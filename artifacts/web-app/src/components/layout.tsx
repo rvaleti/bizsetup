@@ -154,8 +154,8 @@ function NotificationBell() {
   function getPipelineHref(pipelineId: string) {
     if (!user) return null;
     if (user.role === "CUSTOMER") return `/dashboard/company/${pipelineId}`;
-    if (user.role === "FACILITATOR") return `/facilitator/pipeline/${pipelineId}`;
-    return `/facilitator/pipeline/${pipelineId}`;
+    if (user.role === "FACILITATOR") return `/facilitator/pipelines/${pipelineId}`;
+    return `/facilitator/pipelines/${pipelineId}`;
   }
 
   function handleNotifClick(notif: typeof notifications[number], closeDropdown?: () => void) {

@@ -119,7 +119,7 @@ export default function FacilitatorDashboard() {
             return (
               <Link
                 key={company.id}
-                href={`/facilitator/pipeline/${company.pipeline?.id}`}
+                href={`/facilitator/pipelines/${company.pipeline?.id}`}
               >
                 <Card className="p-6 h-full flex flex-col hover-lift cursor-pointer bg-white border-slate-200 group transition-all">
                   <div className="flex justify-between items-start mb-4">
